@@ -1,0 +1,127 @@
+# 04_evaluation.yaml - Evaluation & Test Specification
+version: "1.0.0"
+spec_name: "Evaluation & Test Specification"
+description: "Executable architectural contract and test suite for the Extraction Pipeline & HITL Workbench."
+
+gates:
+  GATE_1_PARSING_COMPLETION:
+    description: "Ensures document parsing successfully extracted structured content."
+    assertions:
+      - "graph_state.parse_status == 'SUCCESS'"
+
+  GATE_2_PROVENANCE_COVERAGE:
+    description: "Ensures all attributes possess valid SOURCE, RULE, or DERIVED evidence."
+    condition: "ALL attributes possess valid SOURCE, RULE, or DERIVED evidence"
+    assertion: |
+      attr.evidence is not None and
+      attr.evidence.evidence_type in ["SOURCE", "RULE", "DERIVED"]
+    test_fixtures:
+      positive_fixture:
+        attribute_id: "attr_001"
+        evidence:
+          evidence_type: "SOURCE"
+          source_text: "100 mg"
+          page_number: 1
+      negative_fixture:
+        attribute_id: "attr_002"
+        evidence: null
+
+  GATE_3_DERIVED_ATTRIBUTE_INTEGRITY:
+    description: "Derived attributes must possess valid provenance and survive validation rules."
+    assertions:
+      - "attr.evidence.rule_id is not None"
+      - "not any(r.attribute_id == attr.attribute_id and not r.passed for r in graph_state.validation_reports)"
+
+  GATE_8_HUMAN_LOCK_INTEGRITY:
+    description: "Detects unauthorized agent mutations on human-locked fields."
+    mechanism: "SHA256 hash comparison against locked snapshot"
+    test_case:
+      initial_human_lock:
+        value: "0.5 IN"
+        locked_hash: "SHA256(0.5 IN)"
+      agent_mutation_attempt:
+        value: "0.75 IN"
+        recomputed_hash: "SHA256(0.75 IN)"
+      assertion: "recomputed_hash != locked_hash"
+    expected_behavior: "Hard block -> Gate evaluation fails and human-locked values must be preserved."
+
+state_transition_matrix:
+  - router: "parser_router"
+    scenario: "Successful parsing routes to categorizer"
+    input_state:
+      parse_status: "SUCCESS"
+    expected_target: "categorizer_agent"
+
+  - router: "parser_router"
+    scenario: "Failed parsing terminates execution"
+    input_state:
+      parse_status: "FAILED"
+    expected_target: "END"
+    terminal_status: "FAILED_PARSING"
+
+  - router: "category_router"
+    scenario: "High categorization confidence routes to extractor"
+    input_state:
+      confidence: 0.85
+    expected_target: "extractor_agent"
+
+  - router: "category_router"
+    scenario: "Low categorization confidence routes to human review"
+    input_state:
+      confidence: 0.45
+    expected_target: "END"
+    terminal_status: "UNCLASSIFIED_HUMAN_REVIEW"
+
+  - router: "validator_router"
+    scenario: "Critical validation failure routes to critic agent"
+    input_state:
+      has_critical_failures: true
+    expected_target: "critic_agent"
+
+  - router: "validator_router"
+    scenario: "High-confidence validated product requires enrichment"
+    input_state:
+      has_critical_failures: false
+      category_confidence: 0.95
+      has_been_enriched: false
+    expected_target: "enricher_agent"
+
+  - router: "enricher_router"
+    scenario: "Enrichment step always triggers re-validation"
+    input_state:
+      has_been_enriched: true
+    expected_target: "validator_agent"
+
+  - router: "critic_router"
+    scenario: "Critic increments retry counter on iteration"
+    input_state:
+      retry_count: 1
+    expected_mutation: "Increments retry_count from 1 to 2"
+
+workbench_evaluation:
+  SAVE_DRAFT:
+    description: "Draft save persists state without invoking publication or confidence routing."
+    input_action: "SAVE_DRAFT"
+    assertions:
+      - "confidence_router IS NOT INVOKED during draft saves."
+      - "target_persistence == 'Review Service / PostgreSQL'"
+
+  ACCEPT_AND_SUBMIT_SUCCESS:
+    description: "Successful human review submission triggers final validation and publication."
+    input_action: "ACCEPT_AND_SUBMIT"
+    input_state:
+      has_critical_failures: false
+    flow:
+      - validator
+      - confidence_router
+    expected_outcome:
+      assigned_status: "PUBLISHED"
+
+  ACCEPT_AND_SUBMIT_VALIDATION_FAILURE:
+    description: "Validation failure during active human review keeps record in review queue for corrections."
+    input_action: "ACCEPT_AND_SUBMIT"
+    input_state:
+      has_critical_failures: true
+    expected_outcome:
+      assigned_status: "REVIEW_REQUIRED"
+      display_validation_errors: true

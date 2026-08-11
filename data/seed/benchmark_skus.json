@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Golden benchmark SKU fixtures for regression testing, Gate 5 provenance checks, and Gate 8 hash verification.",
+  "benchmark_skus": [
+    {
+      "sku": "BENCH-HEX-304SS-M10",
+      "category_id": "CAT_FAST_BOLT_002",
+      "category_confidence": 0.96,
+      "status": "PUBLISHED",
+      "retry_count": 0,
+      "attributes": [
+        {
+          "attribute_id": "attr_bolt_len",
+          "canonical_key": "length",
+          "name": "length",
+          "raw_value": "50 mm",
+          "normalized_value": { "value": 50.0, "unit": "mm" },
+          "numeric_value": 50.0,
+          "unit": "mm",
+          "evidence_id": "ev_src_001",
+          "evidence": {
+            "evidence_type": "SOURCE",
+            "source_text": "Overall length: 50mm",
+            "page_number": 1,
+            "bounding_box": [120.5, 45.0, 210.0, 60.5],
+            "is_verified": true
+          },
+          "is_human_locked": false,
+          "locked_state_hash": null
+        },
+        {
+          "attribute_id": "attr_bolt_dia",
+          "canonical_key": "diameter",
+          "name": "diameter",
+          "raw_value": "0.5 IN",
+          "normalized_value": { "value": 0.5, "unit": "in" },
+          "numeric_value": 0.5,
+          "unit": "in",
+          "evidence_id": "ev_src_002",
+          "evidence": {
+            "evidence_type": "SOURCE",
+            "source_text": "Nominal Shank Diameter 0.5 in",
+            "page_number": 1,
+            "bounding_box": [120.5, 65.0, 210.0, 80.5],
+            "is_verified": true
+          },
+          "is_human_locked": true,
+          "locked_state_hash": "233cf9f116e911eb3c83a743a60a77fbc5a720dcdd14a7e8e5efdf7bd82bf6b1"
+        },
+        {
+          "attribute_id": "attr_bolt_len_m",
+          "canonical_key": "length_m",
+          "name": "length_m",
+          "raw_value": "0.05 m",
+          "normalized_value": { "value": 0.05, "unit": "m" },
+          "numeric_value": 0.05,
+          "unit": "m",
+          "evidence_id": "ev_der_001",
+          "evidence": {
+            "evidence_type": "DERIVED",
+            "rule_id": "RULE_UNIT_CONVERSION",
+            "parent_attribute_ids": ["attr_bolt_len"],
+            "is_verified": true
+          },
+          "is_human_locked": false,
+          "locked_state_hash": null
+        }
+      ]
+    },
+    {
+      "sku": "BENCH-VALVE-BRASS-01",
+      "category_id": "CAT_PIPING_001",
+      "category_confidence": 0.55,
+      "status": "UNCLASSIFIED_HUMAN_REVIEW",
+      "retry_count": 0,
+      "attributes": [
+        {
+          "attribute_id": "attr_valve_press",
+          "canonical_key": "pressure_rating",
+          "name": "pressure_rating",
+          "raw_value": "600 WOG",
+          "normalized_value": { "value": 600.0, "unit": "psi" },
+          "numeric_value": 600.0,
+          "unit": "psi",
+          "evidence_id": "ev_src_003",
+          "evidence": {
+            "evidence_type": "SOURCE",
+            "source_text": "Pressure Rating: 600 WOG",
+            "page_number": 2,
+            "bounding_box": [50.0, 100.0, 150.0, 115.0],
+            "is_verified": false
+          },
+          "is_human_locked": false,
+          "locked_state_hash": null
+        }
+      ]
+    }
+  ]
+}

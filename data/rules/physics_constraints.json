@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Deterministic physics and dimensional validation constraints for extracted catalog attributes.",
+  "rules": [
+    {
+      "rule_id": "PHYS_BOUND_001",
+      "name": "Positive Physical Quantities",
+      "category": "boundary",
+      "target_attributes": ["length", "width", "height", "thickness", "diameter", "weight", "mass", "volume"],
+      "condition": "value > 0",
+      "severity": "CRITICAL",
+      "error_message": "Physical metric must be strictly positive."
+    },
+    {
+      "rule_id": "PHYS_DIM_002",
+      "name": "Maximum Aspect Ratio Check",
+      "category": "dimensional_ratio",
+      "target_attributes": ["length", "width"],
+      "condition": "(length / width) <= 50.0 and (width / length) <= 50.0",
+      "severity": "CRITICAL",
+      "error_message": "Aspect ratio between length and width exceeds physically reasonable threshold (50:1)."
+    },
+    {
+      "rule_id": "PHYS_MAT_003",
+      "name": "Steel Material Density Range",
+      "category": "material_density",
+      "target_attributes": ["weight", "volume", "material"],
+      "precondition": "material matches '(?i).*steel.*'",
+      "condition": "(weight / volume) >= 7.55 and (weight / volume) <= 8.05",
+      "unit_context": { "weight": "g", "volume": "cm3" },
+      "severity": "CRITICAL",
+      "error_message": "Calculated density is outside the valid range for steel alloys (7.55 - 8.05 g/cm³)."
+    },
+    {
+      "rule_id": "PHYS_TEMP_004",
+      "name": "Operating Temperature Order",
+      "category": "thermal_range",
+      "target_attributes": ["min_operating_temp", "max_operating_temp"],
+      "condition": "max_operating_temp > min_operating_temp",
+      "severity": "CRITICAL",
+      "error_message": "Maximum operating temperature must be strictly greater than minimum operating temperature."
+    },
+    {
+      "rule_id": "PHYS_ELEC_005",
+      "name": "Ohm's Law Sanity Check",
+      "category": "electrical",
+      "target_attributes": ["voltage", "current", "resistance"],
+      "precondition": "voltage is not None and current is not None and resistance is not None",
+      "condition": "abs(voltage - (current * resistance)) / voltage <= 0.05",
+      "severity": "WARNING",
+      "error_message": "Voltage, current, and resistance conflict with Ohm's Law (V = I * R) by more than 5% margin."
+    }
+  ]
+}

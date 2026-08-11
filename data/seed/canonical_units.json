@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0.0",
+  "description": "Canonical unit definitions, normalization rules, and conversion factors for engineering extractions.",
+  "unit_categories": {
+    "length": {
+      "base_unit": "m",
+      "units": {
+        "m": { "symbols": ["m", "meter", "meters"], "multiplier_to_base": 1.0 },
+        "mm": { "symbols": ["mm", "millimeter", "millimeters"], "multiplier_to_base": 0.001 },
+        "cm": { "symbols": ["cm", "centimeter", "centimeters"], "multiplier_to_base": 0.01 },
+        "in": { "symbols": ["in", "inch", "inches", "\""], "multiplier_to_base": 0.0254 },
+        "ft": { "symbols": ["ft", "feet", "foot", "'"], "multiplier_to_base": 0.3048 }
+      }
+    },
+    "mass": {
+      "base_unit": "kg",
+      "units": {
+        "kg": { "symbols": ["kg", "kilogram", "kilograms"], "multiplier_to_base": 1.0 },
+        "g": { "symbols": ["g", "gram", "grams"], "multiplier_to_base": 0.001 },
+        "lb": { "symbols": ["lb", "lbs", "pound", "pounds"], "multiplier_to_base": 0.45359237 },
+        "oz": { "symbols": ["oz", "ounce", "ounces"], "multiplier_to_base": 0.028349523125 }
+      }
+    },
+    "pressure": {
+      "base_unit": "Pa",
+      "units": {
+        "Pa": { "symbols": ["Pa", "pascal", "pascals"], "multiplier_to_base": 1.0 },
+        "kPa": { "symbols": ["kPa", "kilopascal"], "multiplier_to_base": 1000.0 },
+        "MPa": { "symbols": ["MPa", "megapascal"], "multiplier_to_base": 1000000.0 },
+        "psi": { "symbols": ["psi", "lbs/in2", "pounds per square inch"], "multiplier_to_base": 6894.757293 },
+        "bar": { "symbols": ["bar", "bars"], "multiplier_to_base": 100000.0 }
+      }
+    },
+    "temperature": {
+      "base_unit": "K",
+      "units": {
+        "K": { "symbols": ["K", "kelvin"], "is_affine": false, "multiplier_to_base": 1.0 },
+        "C": { "symbols": ["C", "°C", "celsius"], "is_affine": true, "offset_to_base": 273.15 },
+        "F": { "symbols": ["F", "°F", "fahrenheit"], "is_affine": true, "offset_to_base": 255.372222, "scale_to_base": 0.5555555555555556 }
+      }
+    },
+    "force": {
+      "base_unit": "N",
+      "units": {
+        "N": { "symbols": ["N", "newton", "newtons"], "multiplier_to_base": 1.0 },
+        "kN": { "symbols": ["kN", "kilonewton"], "multiplier_to_base": 1000.0 },
+        "lbf": { "symbols": ["lbf", "pound-force"], "multiplier_to_base": 4.4482216153 }
+      }
+    },
+    "electrical_current": {
+      "base_unit": "A",
+      "units": {
+        "A": { "symbols": ["A", "amp", "ampere", "amps"], "multiplier_to_base": 1.0 },
+        "mA": { "symbols": ["mA", "milliamp", "milliampere"], "multiplier_to_base": 0.001 }
+      }
+    }
+  }
+}

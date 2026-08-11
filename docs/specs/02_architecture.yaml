@@ -1,0 +1,639 @@
+# ==============================================================================
+# Unilog Catalog Engine - Technical Architecture Specification
+# File: specs/02_architecture.yaml
+# Version: 1.7.0 (Frozen)
+# System: AI-Assisted Catalog Extraction & Validation System
+# ==============================================================================
+
+version: "1.7.0"
+project: "Unilog Catalog Engine"
+spec_type: "Architecture Specification"
+
+# ------------------------------------------------------------------------------
+# 0. Global Architectural Invariants & Service Boundaries
+# ------------------------------------------------------------------------------
+architectural_invariants:
+  agent_authority_boundary:
+    - "Agent nodes operate purely as in-memory state transformers on GraphState."
+    - "Direct mutation of PostgreSQL authoritative catalog tables or Qdrant vector indexes by agent nodes is strictly PROHIBITED."
+    - "Persistent catalog publication occurs exclusively via the publication gate service after confidence_router evaluation."
+    - "Human review services (Workbench API) MAY persist explicitly submitted draft/review state, locked attribute edits, and audit logs directly to PostgreSQL without triggering the publication gate."
+
+  tool_invocation_policy:
+    - "Where a deterministic tool provides the required capability, it MUST be attempted before invoking an LLM fallback for that capability (e.g., Pint/Regex before LLM ambiguity resolver, Docling before Vision LLM)."
+    - "The confidence_router node MUST be 100% deterministic (zero LLM calls during final routing/gating)."
+
+  cross_reference_service_boundary:
+    - "Cross-referencing (Qdrant vector retrieval + spec difference matrix generation) operates as an on-demand, synchronous application service outside the ingestion LangGraph pipeline."
+
+# ------------------------------------------------------------------------------
+# 1. Pydantic State & Domain Entity Schemas
+# ------------------------------------------------------------------------------
+state_schemas:
+  enums:
+    EvidenceTypeEnum:
+      type: string
+      enum: ["SOURCE", "RULE", "DERIVED"]
+
+    JobStatusEnum:
+      type: string
+      enum: ["QUEUED", "PROCESSING", "COMPLETED", "FAILED_PARSING", "FAILED", "CANCELLED"]
+
+    ProductStatusEnum:
+      type: string
+      enum:
+        - "RAW"
+        - "VALIDATED"
+        - "REVIEW_REQUIRED"
+        - "UNCLASSIFIED_HUMAN_REVIEW"
+        - "MANUAL_ENTRY"
+        - "PUBLISHED"
+        - "ARCHIVED"
+
+    CriticActionEnum:
+      type: string
+      enum: ["ACCEPT", "RE_EXTRACT", "RE_NORMALIZE", "ESCALATE_HUMAN"]
+
+    ValidationSeverityEnum:
+      type: string
+      enum: ["CRITICAL", "WARNING"]
+
+    NormalizationMethodEnum:
+      type: string
+      enum: ["PINT", "REGEX", "DICTIONARY", "LLM_FALLBACK", "DERIVED_RULE", "MANUAL_ENTRY"]
+
+    WorkbenchActionEnum:
+      type: string
+      enum: ["ACCEPT", "EDIT", "ESCALATE", "REJECT"]
+
+  entities:
+    BoundingBox:
+      type: object
+      description: "Standardized percentage coordinates [page_number, top_pct, left_pct, width_pct, height_pct]"
+      properties:
+        page_number: { type: integer, minimum: 1 }
+        top_pct: { type: number, minimum: 0.0, maximum: 100.0 }
+        left_pct: { type: number, minimum: 0.0, maximum: 100.0 }
+        width_pct: { type: number, minimum: 0.0, maximum: 100.0 }
+        height_pct: { type: number, minimum: 0.0, maximum: 100.0 }
+      required: ["page_number", "top_pct", "left_pct", "width_pct", "height_pct"]
+
+    Evidence:
+      type: object
+      description: "Verifiable lineage item with model-level conditional constraints"
+      properties:
+        evidence_id: { type: string, format: uuid }
+        evidence_type: { $ref: "#/state_schemas/enums/EvidenceTypeEnum" }
+        source_text: { type: string, nullable: true }
+        page_number: { type: integer, nullable: true }
+        bounding_box: { $ref: "#/state_schemas/entities/BoundingBox", nullable: true }
+        rule_id: { type: string, nullable: true }
+        parent_attribute_ids: { type: array, items: { type: string, format: uuid }, nullable: true }
+        confidence_score: { type: number, minimum: 0.0, maximum: 1.0 }
+        is_verified: { type: boolean, default: false, description: "True if spatial coordinates or rule execution have been explicitly verified" }
+      required: ["evidence_id", "evidence_type", "confidence_score"]
+      conditional_validation_rules:
+        if_type_source:
+          requires: ["source_text", "page_number", "bounding_box"]
+          description: "SOURCE evidence must contain page index and spatial coordinates."
+        if_type_rule:
+          requires: ["rule_id"]
+          description: "RULE evidence must reference an explicit deterministic rule ID."
+        if_type_derived:
+          requires: ["parent_attribute_ids", "rule_id"]
+          description: "DERIVED evidence must cite source parent attribute IDs and inference rule ID."
+
+    ProductAttribute:
+      type: object
+      description: "Unified identity model combining raw, normalized, and derived attribute states under one canonical key"
+      properties:
+        attribute_id: { type: string, format: uuid }
+        canonical_key: { type: string, description: "Standardized taxonomy attribute key (e.g. pressure_rating)" }
+        raw_key: { type: string }
+        raw_value: { type: string }
+        normalized_value: { type: string, nullable: true }
+        numeric_value: { type: number, nullable: true }
+        unit: { type: string, nullable: true }
+        attribute_confidence: { type: number, minimum: 0.0, maximum: 1.0, default: 1.0 }
+        normalization_method: { $ref: "#/state_schemas/enums/NormalizationMethodEnum" }
+        is_derived: { type: boolean, default: false }
+        is_locked: { type: boolean, default: false, description: "True if approved or edited by a human" }
+        locked_hash: { type: string, nullable: true, description: "SHA256(canonical_key|raw_value|normalized_value|numeric_value|unit|evidence_id) generated upon human lock for Gate 8 protection" }
+        requires_human_review: { type: boolean, default: false }
+        evidence: { $ref: "#/state_schemas/entities/Evidence" }
+      required: ["attribute_id", "canonical_key", "raw_key", "raw_value", "attribute_confidence", "normalization_method", "evidence"]
+
+    ValidationReport:
+      type: object
+      properties:
+        report_id: { type: string, format: uuid }
+        attribute_id: { type: string, format: uuid }
+        passed: { type: boolean }
+        rule_name: { type: string }
+        severity: { $ref: "#/state_schemas/enums/ValidationSeverityEnum" }
+        error_message: { type: string }
+      required: ["report_id", "attribute_id", "passed", "rule_name", "severity", "error_message"]
+
+    CriticDecision:
+      type: object
+      description: "Output recommendation generated by Critic Agent during validation failure"
+      properties:
+        decision_id: { type: string, format: uuid }
+        action: { $ref: "#/state_schemas/enums/CriticActionEnum" }
+        target_attributes: { type: array, items: { type: string, format: uuid } }
+        rationale: { type: string, description: "Auditable explanation for correction step" }
+      required: ["decision_id", "action", "rationale"]
+
+    Product:
+      type: object
+      properties:
+        product_id: { type: string, format: uuid }
+        sku: { type: string }
+        category_id: { type: string }
+        status: { $ref: "#/state_schemas/enums/ProductStatusEnum" }
+        attributes: { type: array, items: { $ref: "#/state_schemas/entities/ProductAttribute" } }
+        composite_confidence: { type: number, minimum: 0.0, maximum: 1.0 }
+      required: ["product_id", "sku", "category_id", "status", "attributes", "composite_confidence"]
+
+    GraphState:
+      type: object
+      description: "Root execution state passed between LangGraph nodes during processing"
+      properties:
+        job_id: { type: string, format: uuid }
+        file_path: { type: string }
+        raw_document_markdown: { type: string, nullable: true }
+        page_layout_map: { type: object, nullable: true }
+        category_id: { type: string, nullable: true }
+        category_confidence: { type: number, default: 0.0 }
+        sku_segments: { type: array, items: { type: object } }
+        attributes: { type: array, items: { $ref: "#/state_schemas/entities/ProductAttribute" } }
+        validation_reports: { type: array, items: { $ref: "#/state_schemas/entities/ValidationReport" } }
+        critic_decision: { $ref: "#/state_schemas/entities/CriticDecision", nullable: true }
+        retry_count: { type: integer, default: 0, description: "Sole authoritative loop retry counter" }
+        has_critical_failures: { type: boolean, default: false }
+        has_been_enriched: { type: boolean, default: false }
+        product: { $ref: "#/state_schemas/entities/Product", nullable: true }
+
+# ------------------------------------------------------------------------------
+# 2. LangGraph State Machine & Graph Topology
+# ------------------------------------------------------------------------------
+graph_topology:
+  entry_node: "parser_agent"
+
+  nodes:
+    parser_agent:
+      description: "Parses PDF document layout and extracts bounding box structures"
+      is_deterministic: false
+      tools: ["docling_parse_tool", "vision_llm_parse_tool"]
+      modifies_state: ["raw_document_markdown", "page_layout_map"]
+
+    category_agent:
+      description: "Identifies UNSPSC/ETIM category and detects individual SKU segments"
+      is_deterministic: false
+      tools: ["taxonomy_lookup_tool", "sku_boundary_detector"]
+      modifies_state: ["category_id", "category_confidence", "sku_segments"]
+
+    extractor_agent:
+      description: "Extracts key-value attributes and attaches spatial bounding evidence"
+      is_deterministic: false
+      tools: ["schema_lookup_tool", "spatial_text_search_tool"]
+      modifies_state: ["attributes"]
+
+    normalizer_agent:
+      description: "Normalizes units, numeric values, and jargon into canonical representations"
+      is_deterministic: false
+      tools: ["pint_unit_convert_tool", "regex_cleaner_tool", "jargon_dictionary_tool", "llm_ambiguity_resolver"]
+      modifies_state: ["attributes"]
+
+    validator_agent:
+      description: "Runs physical, domain, and range boundary rules against normalized attributes"
+      is_deterministic: true
+      tools: ["physics_rules_engine", "category_bounds_checker"]
+      modifies_state: ["validation_reports", "has_critical_failures"]
+
+    enricher_agent:
+      description: "Derives required missing attributes using deterministic engineering rules"
+      is_deterministic: true
+      tools: ["deterministic_enrichment_rules"]
+      modifies_state: ["attributes", "has_been_enriched"]
+
+    critic_agent:
+      description: "Evaluates validation errors and recommends re-extraction, re-normalization, or escalation"
+      is_deterministic: false
+      tools: ["evidence_verifier_tool", "prompt_refinement_tool"]
+      modifies_state: ["critic_decision", "retry_count"]
+      state_update_policy:
+        retry_count: "Increment by 1 for every RE_EXTRACT or RE_NORMALIZE correction cycle."
+
+    confidence_router:
+      description: "Evaluates safety publication gates and assigns final product status (100% deterministic)"
+      is_deterministic: true
+      tools: []
+      modifies_state: ["product"]
+
+  conditional_edges:
+    parser_router:
+      source_node: "parser_agent"
+      routes:
+        - condition: "raw_document_markdown IS NOT NULL"
+          target: "category_agent"
+        - condition: "raw_document_markdown IS NULL"
+          target: "__END__"
+          action: "Set job status to FAILED_PARSING"
+
+    category_router:
+      source_node: "category_agent"
+      routes:
+        - condition: "category_confidence >= 0.60"
+          target: "extractor_agent"
+        - condition: "category_confidence < 0.60"
+          target: "__END__"
+          action: "Set product status to UNCLASSIFIED_HUMAN_REVIEW"
+
+    extractor_router:
+      source_node: "extractor_agent"
+      routes:
+        - condition: "attributes IS NOT EMPTY"
+          target: "normalizer_agent"
+        - condition: "attributes IS EMPTY"
+          target: "__END__"
+          action: "Set product status to MANUAL_ENTRY"
+
+    normalizer_router:
+      source_node: "normalizer_agent"
+      routes:
+        - condition: "True"
+          target: "validator_agent"
+
+    validator_router:
+      source_node: "validator_agent"
+      routes:
+        - condition: "has_critical_failures == True"
+          target: "critic_agent"
+        - condition: "has_critical_failures == False AND category_confidence >= 0.90 AND has_been_enriched == False"
+          target: "enricher_agent"
+        - condition: "has_critical_failures == False AND (category_confidence < 0.90 OR has_been_enriched == True)"
+          target: "confidence_router"
+
+    critic_router:
+      source_node: "critic_agent"
+      routes:
+        - condition: "critic_decision.action == 'ACCEPT'"
+          target: "confidence_router"
+        - condition: "critic_decision.action == 'RE_EXTRACT' AND retry_count < 3"
+          target: "extractor_agent"
+        - condition: "critic_decision.action == 'RE_NORMALIZE' AND retry_count < 3"
+          target: "normalizer_agent"
+        - condition: "retry_count >= 3 OR critic_decision.action == 'ESCALATE_HUMAN'"
+          target: "confidence_router"
+
+    enricher_router:
+      source_node: "enricher_agent"
+      routes:
+        - condition: "True"
+          target: "validator_agent"
+
+    publication_router:
+      source_node: "confidence_router"
+      precedence_note: "Routes are evaluated in strict priority order (1 -> 2 -> 3)."
+      routes:
+        - priority: 1
+          condition: "has_critical_failures == True OR retry_count >= 3 OR composite_confidence < 0.60"
+          target: "__END__"
+          action: "Persist to PostgreSQL with status MANUAL_ENTRY"
+        - priority: 2
+          condition: "0.60 <= composite_confidence < 0.90 OR ANY attribute.requires_human_review == True OR non-critical warnings present"
+          target: "__END__"
+          action: "Persist to PostgreSQL with status REVIEW_REQUIRED"
+        - priority: 3
+          condition: "ALL 8 publication gate criteria pass AND has_critical_failures == False AND composite_confidence >= 0.90"
+          target: "__END__"
+          action: "Persist to PostgreSQL with status PUBLISHED"
+
+# ------------------------------------------------------------------------------
+# 3. Tool Declarations & Contracts
+# ------------------------------------------------------------------------------
+tools:
+  docling_parse_tool:
+    is_deterministic: true
+    description: "Parses PDF layout, reading order, and table structures using Docling"
+    input_schema:
+      file_path: { type: string }
+    output_schema:
+      markdown: { type: string }
+      layout_boxes: { type: array, items: { type: object } }
+
+  vision_llm_parse_tool:
+    is_deterministic: false
+    description: "Fallback Vision LLM parser for low-quality or scanned PDF pages"
+    input_schema:
+      file_path: { type: string }
+      page_number: { type: integer }
+    output_schema:
+      ocr_markdown: { type: string }
+
+  taxonomy_lookup_tool:
+    is_deterministic: true
+    description: "Queries UNSPSC / ETIM taxonomy dictionary for matching categories"
+    input_schema:
+      document_text: { type: string }
+    output_schema:
+      category_id: { type: string }
+      confidence: { type: number }
+
+  sku_boundary_detector:
+    is_deterministic: true
+    description: "Detects spec tables and distinct SKU boundaries in document markdown"
+    input_schema:
+      markdown: { type: string }
+    output_schema:
+      sku_segments: { type: array, items: { type: object } }
+
+  schema_lookup_tool:
+    is_deterministic: true
+    description: "Fetches mandatory and optional attribute schemas for a category"
+    input_schema:
+      category_id: { type: string }
+    output_schema:
+      required_attributes: { type: array, items: { type: string } }
+      optional_attributes: { type: array, items: { type: string } }
+
+  spatial_text_search_tool:
+    is_deterministic: true
+    description: "Locates exact spatial bounding box for an extracted source string"
+    input_schema:
+      target_text: { type: string }
+      page_number: { type: integer }
+    output_schema:
+      bounding_box: { $ref: "#/state_schemas/entities/BoundingBox" }
+
+  pint_unit_convert_tool:
+    is_deterministic: true
+    description: "Converts units and magnitudes using Pint physical units library"
+    input_schema:
+      value: { type: number }
+      from_unit: { type: string }
+      to_canonical_unit: { type: string }
+    output_schema:
+      converted_value: { type: number }
+      canonical_unit: { type: string }
+
+  regex_cleaner_tool:
+    is_deterministic: true
+    description: "Applies regex sanitization patterns to raw string values"
+    input_schema:
+      raw_str: { type: string }
+      pattern: { type: string }
+    output_schema:
+      cleaned_str: { type: string }
+
+  jargon_dictionary_tool:
+    is_deterministic: true
+    description: "Maps industrial acronyms and vendor jargon to standardized vocabulary"
+    input_schema:
+      term: { type: string }
+    output_schema:
+      canonical_term: { type: string }
+
+  llm_ambiguity_resolver:
+    is_deterministic: false
+    description: "Fallback LLM invocation to resolve ambiguous units from surrounding text"
+    input_schema:
+      raw_value: { type: string }
+      context_sentence: { type: string }
+    output_schema:
+      resolved_unit: { type: string }
+
+  physics_rules_engine:
+    is_deterministic: true
+    description: "Validates material compatibility, pressure-temperature ratings, and limits"
+    input_schema:
+      category: { type: string }
+      attributes: { type: object }
+    output_schema:
+      reports: { type: array, items: { $ref: "#/state_schemas/entities/ValidationReport" } }
+
+  category_bounds_checker:
+    is_deterministic: true
+    description: "Validates attributes against statistical min/max bounds for the category"
+    input_schema:
+      category_id: { type: string }
+      key: { type: string }
+      value: { type: number }
+    output_schema:
+      within_bounds: { type: boolean }
+      message: { type: string }
+
+  deterministic_enrichment_rules:
+    is_deterministic: true
+    description: "Infers required derived attributes from present base attributes"
+    input_schema:
+      category_id: { type: string }
+      present_attributes: { type: object }
+    output_schema:
+      enriched_attributes: { type: array, items: { $ref: "#/state_schemas/entities/ProductAttribute" } }
+
+  evidence_verifier_tool:
+    is_deterministic: true
+    description: "Verifies whether specified bounding box contains the declared evidence text"
+    input_schema:
+      evidence_id: { type: string, format: uuid }
+    output_schema:
+      is_valid: { type: boolean }
+
+  prompt_refinement_tool:
+    is_deterministic: false
+    description: "Generates targeting instructions for extractor agent during retry loops"
+    input_schema:
+      error_list: { type: array, items: { type: string } }
+    output_schema:
+      guidance_prompt: { type: string }
+
+  qdrant_vector_search_tool:
+    is_deterministic: true
+    description: "Queries Qdrant vector database for functionally equivalent SKUs"
+    input_schema:
+      attribute_vector: { type: array, items: { type: number } }
+      top_k: { type: integer, default: 5 }
+    output_schema:
+      matches: { type: array, items: { type: object } }
+
+  spec_difference_matrix_tool:
+    is_deterministic: true
+    description: "Computes delta matrix and parity score between two product specifications"
+    input_schema:
+      target_product_id: { type: string, format: uuid }
+      candidate_product_id: { type: string, format: uuid }
+    output_schema:
+      parity_percentage: { type: number }
+      delta_summary: { type: object }
+
+# ------------------------------------------------------------------------------
+# 4. FastAPI REST API Contracts
+# ------------------------------------------------------------------------------
+api_contracts:
+  base_url: "/api/v1"
+
+  endpoints:
+    /jobs/upload:
+      post:
+        summary: "Upload vendor PDF for asynchronous parsing and catalog extraction"
+        consumes: ["multipart/form-data"]
+        request_body:
+          file: { type: "file", required: true }
+        responses:
+          202:
+            description: "Job queued successfully"
+            schema:
+              job_id: { type: string, format: uuid }
+              status: { $ref: "#/state_schemas/enums/JobStatusEnum" }
+              created_at: { type: string, format: date-time }
+
+    /jobs/{job_id}:
+      get:
+        summary: "Get processing status and page progress for an active job"
+        parameters:
+          - name: job_id
+            in: path
+            required: true
+            type: string
+        responses:
+          200:
+            description: "Job status returned successfully"
+            schema:
+              job_id: { type: string, format: uuid }
+              status: { $ref: "#/state_schemas/enums/JobStatusEnum" }
+              total_pages: { type: integer }
+              skus_found: { type: integer }
+
+    /products:
+      get:
+        summary: "List catalog products with optional status filtering and pagination"
+        parameters:
+          - name: status
+            in: query
+            required: false
+            type: string
+          - name: limit
+            in: query
+            default: 20
+            type: integer
+          - name: offset
+            in: query
+            default: 0
+            type: integer
+        responses:
+          200:
+            description: "Product list retrieved successfully"
+            schema:
+              total: { type: integer }
+              items: { type: array, items: { $ref: "#/state_schemas/entities/Product" } }
+
+    /products/{product_id}:
+      get:
+        summary: "Get complete product record including attributes and evidence"
+        parameters:
+          - name: product_id
+            in: path
+            required: true
+            type: string
+        responses:
+          200:
+            description: "Product details retrieved successfully"
+            schema:
+              product: { $ref: "#/state_schemas/entities/Product" }
+              validation_reports: { type: array, items: { $ref: "#/state_schemas/entities/ValidationReport" } }
+
+    /products/{product_id}/cross-reference:
+      post:
+        summary: "Perform synchronous functional equivalence search via application service"
+        execution_mode: "SYNCHRONOUS"
+        target_latency: "< 2000ms"
+        parameters:
+          - name: product_id
+            in: path
+            required: true
+            type: string
+        responses:
+          200:
+            description: "Cross-reference candidates and parity scores returned"
+            schema:
+              candidates:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    candidate_product_id: { type: string, format: uuid }
+                    parity_percentage: { type: number }
+                    delta_summary: { type: object }
+
+    /workbench/queue:
+      get:
+        summary: "Fetch products requiring human validation in Review Workbench"
+        responses:
+          200:
+            description: "Queue items fetched successfully"
+            schema:
+              queue_items: { type: array, items: { $ref: "#/state_schemas/entities/Product" } }
+
+    /workbench/review/{product_id}:
+      post:
+        summary: "Submit human review action (ACCEPT/EDIT/ESCALATE/REJECT). Re-runs deterministic validator and routes through confidence_router gate before status assignment."
+        parameters:
+          - name: product_id
+            in: path
+            required: true
+            type: string
+        request_body:
+          action: { $ref: "#/state_schemas/enums/WorkbenchActionEnum" }
+          reason_code: { type: string, nullable: true }
+          comments: { type: string, nullable: true }
+          modified_attributes: { type: array, items: { type: object }, nullable: true }
+          user_id: { type: string }
+        responses:
+          200:
+            description: "Review processed. Re-validation and publication gate evaluation completed."
+            schema:
+              success: { type: boolean }
+              assigned_status: { $ref: "#/state_schemas/enums/ProductStatusEnum" }
+              gate_passed: { type: boolean }
+              updated_product: { $ref: "#/state_schemas/entities/Product" }
+
+# ------------------------------------------------------------------------------
+# 5. Safety Invariants & Publication Gate Rules
+# ------------------------------------------------------------------------------
+publication_gate_policy:
+  description: "Eight mandatory checks enforced by confidence_router before assigning PUBLISHED status"
+  rules:
+    - id: "GATE_1_NO_CRITICAL_FAILURES"
+      condition: "has_critical_failures == False"
+      failure_behavior: "Hard block -> Route to Review Workbench / Manual Queue"
+
+    - id: "GATE_2_PROVENANCE_COVERAGE"
+      condition: "ALL attributes possess valid SOURCE, RULE, or DERIVED evidence"
+      failure_behavior: "Hard block -> Drop unverified fields or escalate"
+
+    - id: "GATE_3_VALIDATED_ENRICHMENT"
+      condition: "ALL derived attributes cite rule_id and pass validator re-runs"
+      failure_behavior: "Hard block -> Reject enriched values"
+
+    - id: "GATE_4_TAXONOMY_COMPLETENESS"
+      condition: "ALL required schema attributes for category_id are populated"
+      failure_behavior: "Hard block -> Route to Human Review Queue"
+
+    - id: "GATE_5_NO_UNVERIFIED_EVIDENCE"
+      condition: "ALL SOURCE evidence items have is_verified == True AND all verification checks passed for RULE/DERIVED evidence"
+      failure_behavior: "Hard block -> Flag for spatial/lineage review"
+
+    - id: "GATE_6_NO_PENDING_ESCALATIONS"
+      condition: "ZERO attributes marked as requiring human review"
+      failure_behavior: "Hard block -> Retain in Review Workbench"
+
+    - id: "GATE_7_THRESHOLD_TRUST_SCORE"
+      condition: "Composite Trust Score S >= 0.90"
+      failure_behavior: "Route to REVIEW_REQUIRED if 0.60 <= S < 0.90, else MANUAL_ENTRY"
+
+    - id: "GATE_8_LOCK_PROTECTION"
+      condition: "NO human-approved/edited (is_locked == True) attribute value, unit, or evidence is modified by agent nodes"
+      detection_mechanism: "State engine records locked_hash = SHA256(canonical_key|raw_value|normalized_value|numeric_value|unit|evidence_id) upon human lock. confidence_router asserts locked_hash parity for all is_locked attributes before gate approval."
+      failure_behavior: "Hard block -> Revert agent mutation and preserve human locked values"

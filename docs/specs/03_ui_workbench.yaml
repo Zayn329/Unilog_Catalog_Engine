@@ -1,0 +1,407 @@
+# ==============================================================================
+# Unilog Catalog Engine - Review Workbench UI Specification
+# File: specs/03_ui_workbench.yaml
+# Version: 1.4.0 (Frozen)
+# System: AI-Assisted Catalog Extraction & Validation Workbench
+# ==============================================================================
+
+version: "1.4.0"
+project: "Unilog Catalog Engine"
+spec_type: "UI Review Workbench Specification"
+
+# ------------------------------------------------------------------------------
+# 1. Overview & UI Architectural Standards
+# ------------------------------------------------------------------------------
+ui_standards:
+  design_system: "Onyx Dark Theme / High-Contrast Ergonomic B2B Workbench"
+  target_viewport: "Minimum 1920x1080 (Optimized for dual-monitor or ultra-wide setups)"
+  rendering_engine: "Next.js 14 / React 18 / Tailwind CSS / PDF.js Canvas Engine"
+  state_management: "Zustand (Global Workspace State) + React Query (Server State)"
+  primary_objectives:
+    - "Minimize click fatigue for catalog reviewers."
+    - "Provide bi-directional visual linkage between attribute values and PDF source evidence."
+    - "Enforce strict human locking mechanisms before publishing."
+
+# ------------------------------------------------------------------------------
+# 2. Shared Enums (1:1 Match with Architecture Specification)
+# ------------------------------------------------------------------------------
+enums:
+  EvidenceTypeEnum:
+    - SOURCE
+    - RULE
+    - DERIVED
+
+  JobStatusEnum:
+    - QUEUED
+    - PROCESSING
+    - COMPLETED
+    - FAILED_PARSING
+    - FAILED
+    - CANCELLED
+
+  ProductStatusEnum:
+    - RAW
+    - VALIDATED
+    - REVIEW_REQUIRED
+    - UNCLASSIFIED_HUMAN_REVIEW
+    - MANUAL_ENTRY
+    - PUBLISHED
+    - ARCHIVED
+
+  NormalizationMethodEnum:
+    - PINT
+    - REGEX
+    - DICTIONARY
+    - LLM_FALLBACK
+    - DERIVED_RULE
+    - MANUAL_ENTRY
+
+  WorkbenchActionEnum:
+    - ACCEPT
+    - EDIT
+    - ESCALATE
+    - REJECT
+
+# ------------------------------------------------------------------------------
+# 3. Workspace State Schema (Client-Side State Mirroring ProductAttribute)
+# ------------------------------------------------------------------------------
+workspace_state_schema:
+  description: >
+    Represents client-side state of an active review session. Directly aligns
+    with server-side ProductAttribute domain entities while isolating local edits.
+
+  fields:
+    product_id: { type: "UUID", required: true }
+    job_id: { type: "UUID", required: true }
+    reviewer_id: { type: "UUID", required: true }
+    is_dirty: { type: "boolean", default: false }
+
+    attributes:
+      type: "Map<AttributeKey, AttributeState>"
+      schema:
+        attribute_id: { type: "UUID", required: true }
+        canonical_key: { type: "String", required: true }
+        raw_key: { type: "String", required: true }
+        raw_value: { type: "String", required: true }
+        normalized_value: { type: "String", nullable: true }
+        numeric_value: { type: "Float", nullable: true }
+        unit: { type: "String", nullable: true }
+        attribute_confidence: { type: "Float", default: 1.0 }
+        normalization_method: { type: "NormalizationMethodEnum", default: "PINT" }
+        is_derived: { type: "boolean", default: false }
+        is_locked: { type: "boolean", default: false }
+        locked_hash: { type: "String", nullable: true, description: "SHA256 hash computed on lock for Gate 8 protection" }
+        requires_human_review: { type: "boolean", default: false }
+        evidence:
+          type: "Object"
+          schema:
+            evidence_id: { type: "UUID", required: true }
+            evidence_type: { type: "EvidenceTypeEnum", default: "SOURCE" }
+            source_text: { type: "String", nullable: true }
+            page_number: { type: "Integer", nullable: true }
+            bounding_box:
+              type: "Object"
+              schema:
+                page_number: { type: "Integer" }
+                top_pct: { type: "Float" }
+                left_pct: { type: "Float" }
+                width_pct: { type: "Float" }
+                height_pct: { type: "Float" }
+            confidence_score: { type: "Float" }
+            is_verified: { type: "boolean", default: false }
+
+# ------------------------------------------------------------------------------
+# 4. Split-Screen Layout Architecture
+# ------------------------------------------------------------------------------
+layout_architecture:
+  container:
+    type: "Flex Layout (Full Viewport)"
+    direction: "Column"
+    height: "100vh"
+    overflow: "Hidden"
+
+  header_bar:
+    height: "56px"
+    components:
+      - id: "job_info_pill"
+        type: "Badge"
+        data_sources: ["product.sku", "product.category_id", "product.status"]
+      - id: "confidence_meter"
+        type: "ProgressCircle"
+        data_source: "product.composite_confidence"
+        thresholds:
+          high: { min: 0.90, color: "Emerald-500" }
+          medium: { min: 0.60, color: "Amber-500" }
+          low: { min: 0.00, color: "Rose-500" }
+      - id: "flagged_attribute_counter"
+        type: "CounterBadge"
+        label: "Flagged Attributes"
+        count_source: "count(attributes.requires_human_review == true)"
+      - id: "action_bar"
+        type: "ButtonGroup"
+        actions: ["ACCEPT_AND_SUBMIT", "SAVE_DRAFT", "ESCALATE_SENIOR", "REJECT_EXTRACTION"]
+
+  main_split_panel:
+    type: "ResizableSplitPane"
+    orientation: "Horizontal"
+    default_split_ratio: 0.50
+    min_panel_width_px: 450
+
+    left_panel:
+      name: "Source Document Viewer"
+      component: "PDFBoundingBoxCanvas"
+      flex: 1
+      background: "Slate-950"
+
+    right_panel:
+      name: "Attribute Review & Validation Workbench"
+      component: "AttributeReviewGrid"
+      flex: 1
+      background: "Slate-900"
+      sections:
+        - "ValidationAlertBanner"
+        - "TaxonomySelectorBar"
+        - "CategoryAttributeTable"
+        - "DerivedAttributesAccordion"
+
+  drawer_panel:
+    name: "Cross-Reference & Equivalence Inspector"
+    type: "BottomSlideOverDrawer"
+    height_expanded: "400px"
+    collapsible: true
+    trigger_endpoint: "/products/{product_id}/cross-reference"
+
+# ------------------------------------------------------------------------------
+# 5. PDF Bounding Box Canvas Component
+# ------------------------------------------------------------------------------
+pdf_canvas_component:
+  component_name: "PDFBoundingBoxCanvas"
+  engine: "PDF.js Web Canvas Renderer"
+
+  coordinate_mapping:
+    formula: |
+      pixel_left   = container_width  * (bounding_box.left_pct / 100.0)
+      pixel_top    = container_height * (bounding_box.top_pct / 100.0)
+      pixel_width  = container_width  * (bounding_box.width_pct / 100.0)
+      pixel_height = container_height * (bounding_box.height_pct / 100.0)
+
+  interactive_states:
+    default_box:
+      stroke: "Cyan-500"
+      stroke_width: "1.5px"
+      fill: "Cyan-500 / 10% opacity"
+
+    focused_box:
+      stroke: "Amber-400"
+      stroke_width: "3px"
+      fill: "Amber-400 / 25% opacity"
+      animation: "Pulse 1.5s infinite"
+      behavior: "Auto-scroll PDF canvas to center focused box with 200ms smooth animation."
+
+    unverified_box:
+      stroke: "Rose-500"
+      stroke_width: "2px"
+      fill: "Rose-500 / 15% opacity"
+      dash_array: "4 4"
+
+    manual_draw_mode:
+      enabled: true
+      trigger: "Click 'Draw Evidence Box' button or keypress 'D'"
+      action: "Drag rectangular marquee over PDF image -> Captures page_number and top/left/width/height percentages."
+      updates: "Replaces bounding_box on currently selected ProductAttribute and triggers evidence verification."
+
+# ------------------------------------------------------------------------------
+# 6. Keyboard Shortcuts & Actions
+# ------------------------------------------------------------------------------
+keyboard_shortcuts:
+  - shortcut: "Ctrl+Shift+V"
+    action: "VERIFY_EVIDENCE"
+    description: "Mark current attribute evidence as verified in workspace state (evidence.is_verified = true)"
+    scope: "focused_attribute_evidence"
+
+  - shortcut: "Ctrl+Enter"
+    action: "ACCEPT_AND_SUBMIT"
+    description: "Trigger ACCEPT_AND_SUBMIT workflow"
+    scope: "workbench_global"
+
+  - shortcut: "Ctrl+Shift+E"
+    action: "ESCALATE_SENIOR"
+    description: "Trigger ESCALATE_SENIOR workflow"
+    scope: "workbench_global"
+
+  - shortcut: "Ctrl+Shift+R"
+    action: "REJECT_EXTRACTION"
+    description: "Trigger REJECT_EXTRACTION workflow"
+    scope: "workbench_global"
+
+  - shortcut: "Tab / Shift+Tab"
+    action: "NAVIGATE_GRID"
+    description: "Navigate focus to next/previous attribute in review panel"
+    scope: "attribute_panel"
+
+  - shortcut: "Key 'D'"
+    action: "DRAW_BOX_MODE"
+    description: "Activate Manual Evidence Box Drawing Mode on PDF canvas"
+    scope: "pdf_canvas"
+
+# ------------------------------------------------------------------------------
+# 7. Workflow Action Handlers & API Contract Mapping
+# ------------------------------------------------------------------------------
+action_handlers:
+  EDIT_ATTRIBUTE_VALUE:
+    description: "Invoked when a reviewer modifies an attribute value, numeric value, or unit."
+    local_state_mutations:
+      - "attributes[key].normalized_value = new_value"
+      - "attributes[key].is_locked = true"
+      - "attributes[key].normalization_method = NormalizationMethodEnum.MANUAL_ENTRY"
+      - "attributes[key].attribute_confidence = 1.0"
+      - "attributes[key].locked_hash = SHA256(canonical_key|raw_value|new_value|numeric_value|unit|evidence_id)"
+      - "workspace_state.is_dirty = true"
+    semantics_note: "Modifying values locks the edit, but does NOT mark evidence.is_verified = true. Provenance remains distinct."
+
+  VERIFY_EVIDENCE:
+    description: "Invoked when a reviewer presses Ctrl+Shift+V or confirms a bounding box."
+    local_state_mutations:
+      - "attributes[key].evidence.is_verified = true"
+      - "workspace_state.is_dirty = true"
+    semantics_note: "Evidence verification is strictly a local workspace mutation until submitted."
+
+  ACCEPT_AND_SUBMIT:
+    description: "Submits human-approved or edited extraction to backend review service."
+    mapped_workbench_action: "WorkbenchActionEnum.ACCEPT"
+    endpoint: "POST /api/v1/workbench/review/{product_id}"
+    payload:
+      action: "ACCEPT"
+      reason_code: "HUMAN_VERIFIED"
+      comments: "Reviewer comments"
+      modified_attributes: "Array of attributes where is_locked == true or evidence.is_verified == true"
+      user_id: "Current reviewer session ID"
+
+    backend_pipeline_execution:
+      1: "Review Service receives submission payload."
+      2: "Load submitted locked/modified attributes into validation state."
+      3: "Invoke validator_agent deterministic rule checks."
+      4: "If validator passes -> Invoke confidence_router to evaluate 8 Publication Gates."
+      5: "Assign ProductStatusEnum based on gate outcomes (PUBLISHED if all gates pass, else REVIEW_REQUIRED or MANUAL_ENTRY)."
+      6: "Persist final Product entity and audit trail directly to PostgreSQL."
+
+    failure_behavior:
+      validation_failure:
+        - "Keep reviewer on the current product."
+        - "Refresh validation_callouts banner with returned ValidationReport items."
+        - "Focus the first affected attribute input field."
+        - "Do not clear reviewer edits."
+
+  SAVE_DRAFT:
+    description: "Saves current work without triggering publication gates."
+    mapped_workbench_action: "WorkbenchActionEnum.EDIT"
+    endpoint: "POST /api/v1/workbench/review/{product_id}"
+    payload:
+      action: "EDIT"
+      reason_code: "IN_PROGRESS_REVIEW"
+      comments: "Draft notes"
+      modified_attributes: "Array of modified attributes"
+      user_id: "Current reviewer session ID"
+    backend_behavior:
+      - "Review Service persists draft attributes and audit log to PostgreSQL."
+      - "Sets product.status = ProductStatusEnum.REVIEW_REQUIRED without invoking publication gate."
+      - "Displays success toast and remains on current workspace item."
+
+  ESCALATE_SENIOR:
+    description: "Routes item to senior engineer queue for manual handling."
+    mapped_workbench_action: "WorkbenchActionEnum.ESCALATE"
+    endpoint: "POST /api/v1/workbench/review/{product_id}"
+    payload:
+      action: "ESCALATE"
+      reason_code: "UNCLEAR_SPECIFICATION"
+      comments: "Escalation rationale"
+      user_id: "Current reviewer session ID"
+    backend_behavior:
+      - "Backend Review Service assigns product.status = ProductStatusEnum.MANUAL_ENTRY."
+      - "Records escalation reason and reviewer notes in audit log."
+      - "Navigates seamlessly to next queue item in /workbench/queue."
+
+  REJECT_EXTRACTION:
+    description: "Invalidates current extraction due to corrupt document or unparseable layout."
+    mapped_workbench_action: "WorkbenchActionEnum.REJECT"
+    endpoint: "POST /api/v1/workbench/review/{product_id}"
+    payload:
+      action: "REJECT"
+      reason_code: "CORRUPT_DOCUMENT"
+      comments: "Rejection justification"
+      user_id: "Current reviewer session ID"
+    backend_behavior:
+      - "Backend Review Service marks associated processing job status as FAILED (JobStatusEnum.FAILED)."
+      - "Removes rejected product from active workbench queue."
+      - "Records rejection audit event in PostgreSQL with reviewer ID and timestamp."
+
+# ------------------------------------------------------------------------------
+# 8. Publication Gates Contract (Verbatim Match with Architecture)
+# ------------------------------------------------------------------------------
+publication_gates_contract:
+  description: "8 mandatory checks evaluated by confidence_router during review submission"
+  gates:
+    - id: "GATE_1_NO_CRITICAL_FAILURES"
+      condition: "has_critical_failures == False"
+      failure_behavior: "Hard block -> Route to Review Workbench / Manual Queue"
+
+    - id: "GATE_2_PROVENANCE_COVERAGE"
+      condition: "ALL attributes possess valid SOURCE, RULE, or DERIVED evidence"
+      failure_behavior: "Hard block -> Drop unverified fields or escalate"
+
+    - id: "GATE_3_VALIDATED_ENRICHMENT"
+      condition: "ALL derived attributes cite rule_id and pass validator re-runs"
+      failure_behavior: "Hard block -> Reject enriched values"
+
+    - id: "GATE_4_TAXONOMY_COMPLETENESS"
+      condition: "ALL required schema attributes for category_id are populated"
+      failure_behavior: "Hard block -> Route to Human Review Queue"
+
+    - id: "GATE_5_NO_UNVERIFIED_EVIDENCE"
+      condition: "ALL SOURCE evidence items have is_verified == True AND all verification checks passed for RULE/DERIVED evidence"
+      failure_behavior: "Hard block -> Flag for spatial/lineage review"
+
+    - id: "GATE_6_NO_PENDING_ESCALATIONS"
+      condition: "ZERO attributes marked as requiring human review"
+      failure_behavior: "Hard block -> Retain in Review Workbench"
+
+    - id: "GATE_7_THRESHOLD_TRUST_SCORE"
+      condition: "Composite Trust Score S >= 0.90"
+      failure_behavior: "Route to REVIEW_REQUIRED if 0.60 <= S < 0.90, else MANUAL_ENTRY"
+
+    - id: "GATE_8_LOCK_PROTECTION"
+      condition: "NO human-approved/edited (is_locked == True) attribute value, unit, or evidence is modified by agent nodes"
+      detection_mechanism: "State engine records locked_hash = SHA256(canonical_key|raw_value|normalized_value|numeric_value|unit|evidence_id) upon human lock. confidence_router asserts locked_hash parity for all is_locked attributes before gate approval."
+      failure_behavior: "Hard block -> Revert agent mutation and preserve human locked values"
+
+# ------------------------------------------------------------------------------
+# 9. Audit & Telemetry Contract
+# ------------------------------------------------------------------------------
+audit_logging:
+  events:
+    - event_type: "ATTRIBUTE_VALUE_CORRECTED"
+      payload_schema:
+        product_id: "UUID"
+        canonical_key: "String"
+        old_value: "String"
+        new_value: "String"
+        locked_hash: "String"
+        reviewer_id: "UUID"
+        timestamp: "ISO8601"
+
+    - event_type: "EVIDENCE_VERIFIED"
+      payload_schema:
+        product_id: "UUID"
+        canonical_key: "String"
+        evidence_id: "UUID"
+        reviewer_id: "UUID"
+        timestamp: "ISO8601"
+
+    - event_type: "EXTRACTION_REJECTED"
+      payload_schema:
+        product_id: "UUID"
+        job_id: "UUID"
+        job_status: "JobStatusEnum.FAILED"
+        reason_code: "String"
+        reviewer_id: "UUID"
+        timestamp: "ISO8601"

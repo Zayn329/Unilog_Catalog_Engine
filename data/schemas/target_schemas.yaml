@@ -1,0 +1,95 @@
+version: "1.0.0"
+schema_name: "Catalog Extraction Target Schemas"
+description: "Validation definitions for target entity structures, attribute evidence, and human locking metadata."
+
+definitions:
+  EvidenceSchema:
+    type: "object"
+    required:
+      - "evidence_type"
+    properties:
+      evidence_type:
+        type: "string"
+        enum: ["SOURCE", "RULE", "DERIVED"]
+      source_text:
+        type: "string"
+      page_number:
+        type: "integer"
+        minimum: 1
+      bounding_box:
+        type: "array"
+        items:
+          type: "number"
+        minItems: 4
+        maxItems: 4
+      rule_id:
+        type: "string"
+      parent_attribute_ids:
+        type: "array"
+        items:
+          type: "string"
+
+  AttributeSchema:
+    type: "object"
+    required:
+      - "attribute_id"
+      - "name"
+      - "raw_value"
+      - "normalized_value"
+      - "evidence"
+    properties:
+      attribute_id:
+        type: "string"
+      name:
+        type: "string"
+      raw_value:
+        type: "string"
+      normalized_value:
+        type: "object"
+        required:
+          - "value"
+        properties:
+          value:
+            type: ["string", "number", "boolean"]
+          unit:
+            type: ["string", "null"]
+      evidence:
+        $ref: "#/definitions/EvidenceSchema"
+      is_human_locked:
+        type: "boolean"
+        default: false
+      locked_state_hash:
+        type: ["string", "null"]
+
+  ProductRecordSchema:
+    type: "object"
+    required:
+      - "sku"
+      - "category_id"
+      - "category_confidence"
+      - "attributes"
+      - "status"
+    properties:
+      sku:
+        type: "string"
+      category_id:
+        type: "string"
+      category_confidence:
+        type: "number"
+        minimum: 0.0
+        maximum: 1.0
+      status:
+        type: "string"
+        enum:
+          - "UNCLASSIFIED_HUMAN_REVIEW"
+          - "FAILED_PARSING"
+          - "REVIEW_REQUIRED"
+          - "PUBLISHED"
+      retry_count:
+        type: "integer"
+        minimum: 0
+        default: 0
+      attributes:
+        type: "array"
+        items:
+          $ref: "#/definitions/AttributeSchema"

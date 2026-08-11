@@ -1,0 +1,49 @@
+version: "1.0.0"
+taxonomy_name: "UniLog Standard Industrial Taxonomy"
+description: "Hierarchical category classifications, confidence thresholds, and mandatory attribute schemas."
+
+confidence_thresholds:
+  auto_extraction_min: 0.60
+  auto_enrichment_min: 0.90
+  human_review_trigger: 0.59
+
+categories:
+  - category_id: "CAT_FAST_001"
+    name: "Fasteners"
+    path: "Hardware > Fasteners"
+    required_attributes:
+      - "thread_size"
+      - "length"
+      - "material"
+    subcategories:
+      - category_id: "CAT_FAST_BOLT_002"
+        name: "Hex Bolts"
+        path: "Hardware > Fasteners > Bolts > Hex Bolts"
+        required_attributes:
+          - "head_style"
+          - "drive_type"
+          - "grade"
+          - "thread_pitch"
+
+  - category_id: "CAT_ELEC_001"
+    name: "Electrical Components"
+    path: "Electronics > Components"
+    required_attributes:
+      - "voltage_rating"
+      - "current_rating"
+    subcategories:
+      - category_id: "CAT_ELEC_SW_002"
+        name: "Circuit Breakers"
+        path: "Electronics > Components > Switches > Circuit Breakers"
+        required_attributes:
+          - "breaking_capacity"
+          - "number_of_poles"
+          - "mounting_type"
+
+  - category_id: "CAT_PIPING_001"
+    name: "Piping & Tubing"
+    path: "Plumbing > Piping & Tubing"
+    required_attributes:
+      - "outer_diameter"
+      - "wall_thickness"
+      - "pressure_rating"

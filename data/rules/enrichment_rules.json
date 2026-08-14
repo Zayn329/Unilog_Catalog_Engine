@@ -1,0 +1,11 @@
+[
+  {
+    "rule_id": "RULE_MATERIAL_CORROSION_RESISTANCE",
+    "category_id": "PIPING",
+    "source_attribute": "material",
+    "source_pattern": "stainless\\s+steel",
+    "derived_attribute": "is_corrosion_resistant",
+    "derived_value": "true"
+  }
+]
+

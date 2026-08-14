@@ -18,10 +18,7 @@ def parser_node(state: GraphState) -> GraphState:
     result = parse_pdf(state["file_path"])
     state["raw_document_markdown"] = result.raw_document_markdown
     state["document_markdown"] = result.raw_document_markdown  # type: ignore[typeddict-item]
-    state["page_layout_map"] = {
-        str(page.page_number): page.model_dump(mode="json")
-        for page in result.page_layout_map
-    }
+    state["page_layout_map"] = result.page_layout_map
     # These fields are part of the ingestion contract and are consumed by the
     # parser router; GraphState remains backward-compatible with Phase 1.
     state["parse_status"] = result.parse_status  # type: ignore[typeddict-item]

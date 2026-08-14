@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class LayoutBox(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    text: str
     coordinates: tuple[int, float, float, float, float]
 
 
@@ -85,6 +86,7 @@ class DoclingParser:
                     text_parts.append(text)
                     boxes.append(
                         LayoutBox(
+                            text=text,
                             coordinates=(
                                 page_index + 1,
                                 (height - top) / height * 100.0,
@@ -143,6 +145,7 @@ class DoclingParser:
                     continue
                 layout.bounding_boxes.append(
                     LayoutBox(
+                        text=text,
                         coordinates=(
                             page_number,
                             bbox.t / height * 100.0,

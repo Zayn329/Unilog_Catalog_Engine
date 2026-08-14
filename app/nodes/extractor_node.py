@@ -1,8 +1,25 @@
 import re
 from typing import Any
 from uuid import uuid4
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.domain import BoundingBox, Evidence, ProductAttribute
+from app.tools.docling_parser import PageLayout
+
+
+class ExtractorInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category_id: str = Field(min_length=1)
+    sku_segment: str | None = None
+    raw_document_markdown: str = Field(min_length=1)
+    page_layout_map: list[PageLayout]
+
+
+class ExtractorOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    attributes: list[ProductAttribute]
 
 
 _ATTRIBUTE_PATTERNS = (
@@ -13,14 +30,19 @@ _ATTRIBUTE_PATTERNS = (
 )
 
 
-def extract_attributes(state: dict[str, Any]) -> list[ProductAttribute]:
-    markdown = str(state.get("raw_document_markdown") or "")
+def extract_attributes(state: ExtractorInput) -> ExtractorOutput:
+    if not isinstance(state, ExtractorInput):
+        raise TypeError("extract_attributes requires ExtractorInput")
+    markdown = state.raw_document_markdown
     attributes: list[ProductAttribute] = []
     for canonical_key, pattern in _ATTRIBUTE_PATTERNS:
         match = re.search(pattern, markdown, flags=re.IGNORECASE)
         if match is None:
             continue
         raw_value = match.group("value").strip()
+        source_box = _find_source_box(state.page_layout_map, match.group(0))
+        if source_box is None:
+            continue
         evidence_id = uuid4()
         evidence = Evidence(
             evidence_id=evidence_id,
@@ -28,11 +50,11 @@ def extract_attributes(state: dict[str, Any]) -> list[ProductAttribute]:
             source_text=match.group(0),
             page_number=1,
             bounding_box=BoundingBox(
-                page_number=1,
-                top_pct=0.0,
-                left_pct=0.0,
-                width_pct=100.0,
-                height_pct=100.0,
+                page_number=source_box.coordinates[0],
+                top_pct=source_box.coordinates[1],
+                left_pct=source_box.coordinates[2],
+                width_pct=source_box.coordinates[3],
+                height_pct=source_box.coordinates[4],
             ),
             confidence_score=1.0,
             is_verified=True,
@@ -48,5 +70,13 @@ def extract_attributes(state: dict[str, Any]) -> list[ProductAttribute]:
                 evidence_id=evidence_id,
             )
         )
-    return attributes
+    return ExtractorOutput(attributes=attributes)
 
+
+def _find_source_box(page_layout_map: list[PageLayout], source_text: str):
+    normalized_source = " ".join(source_text.casefold().split())
+    for page in page_layout_map:
+        for box in page.bounding_boxes:
+            if normalized_source in " ".join(box.text.casefold().split()):
+                return box
+    return None

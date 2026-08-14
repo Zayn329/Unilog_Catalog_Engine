@@ -1,10 +1,26 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
+from pydantic import BaseModel, ConfigDict, Field
 
 
 TAXONOMY_PATH = Path(__file__).parents[2] / "data" / "taxonomy" / "unilog_taxonomy.yaml"
+
+
+class CategoryInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    raw_document_markdown: str = Field(min_length=1)
+
+
+class CategoryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category_id: str = Field(min_length=1)
+    category_confidence: float = Field(ge=0.0, le=1.0)
+    category_status: Literal["AUTO_ASSIGNED", "FLAGGED_FOR_REVIEW", "UNCLASSIFIED_HUMAN_REVIEW"]
+    terminal_status: Literal["UNCLASSIFIED_HUMAN_REVIEW"] | None = None
 
 
 def _taxonomy_terms() -> list[tuple[str, str, str]]:
@@ -18,9 +34,11 @@ def _taxonomy_terms() -> list[tuple[str, str, str]]:
 
 
 def categorize_document(
-    state: dict[str, Any], confidence_override: float | None = None
-) -> dict[str, Any]:
-    text = str(state.get("raw_document_markdown") or "")
+    state: CategoryInput, confidence_override: float | None = None
+) -> CategoryOutput:
+    if not isinstance(state, CategoryInput):
+        raise TypeError("categorize_document requires CategoryInput")
+    text = state.raw_document_markdown
     lowered = text.casefold()
     category_id = "UNCLASSIFIED"
     confidence = 0.0
@@ -34,15 +52,22 @@ def categorize_document(
         category_id, confidence = "BALL_VALVE", 0.95
     if confidence_override is not None:
         confidence = confidence_override
-    result = dict(state)
-    result["category_id"] = category_id
-    result["category_confidence"] = confidence
+    category_status: Literal[
+        "AUTO_ASSIGNED", "FLAGGED_FOR_REVIEW", "UNCLASSIFIED_HUMAN_REVIEW"
+    ]
     if confidence >= 0.85:
-        result["category_status"] = "AUTO_ASSIGNED"
+        category_status = "AUTO_ASSIGNED"
     elif confidence >= 0.60:
-        result["category_status"] = "FLAGGED_FOR_REVIEW"
+        category_status = "FLAGGED_FOR_REVIEW"
     else:
-        result["category_status"] = "UNCLASSIFIED_HUMAN_REVIEW"
-        result["terminal_status"] = "UNCLASSIFIED_HUMAN_REVIEW"
-    return result
-
+        category_status = "UNCLASSIFIED_HUMAN_REVIEW"
+    return CategoryOutput(
+        category_id=category_id,
+        category_confidence=confidence,
+        category_status=category_status,
+        terminal_status=(
+            "UNCLASSIFIED_HUMAN_REVIEW"
+            if category_status == "UNCLASSIFIED_HUMAN_REVIEW"
+            else None
+        ),
+    )

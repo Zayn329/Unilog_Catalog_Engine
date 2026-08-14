@@ -63,6 +63,18 @@ def test_parser_output_contains_layout_text_and_page_coordinates(
     assert result.page_layout_map[0].text
 
 
+def test_parser_output_preserves_text_on_each_coordinate_box(
+    readable_pdf: Path,
+) -> None:
+    result = parse_document(readable_pdf)
+
+    assert any(
+        box.text and box.coordinates[0] == page.page_number
+        for page in result.page_layout_map
+        for box in page.bounding_boxes
+    )
+
+
 def test_parser_extracts_standard_five_element_bounding_boxes(
     readable_pdf: Path,
 ) -> None:

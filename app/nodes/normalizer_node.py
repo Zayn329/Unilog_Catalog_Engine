@@ -25,7 +25,11 @@ def normalize_attributes(state: NormalizerInput) -> NormalizerOutput:
     normalized: list[ProductAttribute] = []
     for attribute in state.attributes:
         updated = attribute
-        if attribute.numeric_value is not None and attribute.unit:
+        if (
+            not attribute.is_human_locked
+            and attribute.numeric_value is not None
+            and attribute.unit
+        ):
             target_unit = _canonical_target(attribute.unit)
             if target_unit != attribute.unit:
                 result = normalize_scalar(attribute.numeric_value, attribute.unit, target_unit)

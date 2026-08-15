@@ -37,7 +37,8 @@ export default function ReviewQueuePage() {
   };
 
   useEffect(() => {
-    fetchQueue();
+    const timer = window.setTimeout(() => void fetchQueue(), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const getStatusBadge = (status: string) => {

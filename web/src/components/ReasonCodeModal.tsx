@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { AlertCircle, Check, ShieldCheck, X } from "lucide-react";
+import { Check, ShieldCheck, X } from "lucide-react";
 
 export const STANDARD_REASON_CODES = [
   { code: "OCR_TYPO", label: "OCR Typo", description: "Source document text was misread during extraction." },

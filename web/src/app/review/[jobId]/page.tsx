@@ -1,14 +1,15 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Clock,
-  Layers,
   RefreshCw,
+  Save,
+  Send,
   ShieldAlert,
   Tag,
 } from "lucide-react";
@@ -38,8 +39,13 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const fetchJob = async () => {
+  const fetchJob = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -65,11 +71,12 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId, selectedAttributeId]);
 
   useEffect(() => {
-    fetchJob();
-  }, [jobId]);
+    const timer = window.setTimeout(() => void fetchJob(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchJob]);
 
   const handleUpdateAttribute = (
     attributeId: string,
@@ -87,7 +94,38 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
       next.set(attributeId, auditReason);
       return next;
     });
-  };
+  }, [jobId, selectedAttributeId]);
+
+  const handleSubmit = async (action: "ACCEPT_AND_SUBMIT" | "SAVE_DRAFT") => {
+    setSubmitting(true);
+    setToast(null);
+    try {
+      const response = await api.submitReview({
+        job_id: jobId,
+        action,
+        modified_attributes: Array.from(modifiedAttributes.values()),
+        audit_reason: Array.from(auditReasons.values()).join("; ") || null,
+      });
+      setToast({
+        type: "success",
+        message:
+          action === "SAVE_DRAFT"
+            ? "Draft saved without triggering graph re-validation."
+            : `Review submitted: ${response.status}. Audit log recorded.`,
+      });
+      await fetchJob();
+    } catch (err) {
+      setToast({
+        type: "error",
+        message:
+          err instanceof ApiError
+            ? err.message
+            : "Unable to submit review. Please try again.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [jobId, selectedAttributeId]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -194,8 +232,47 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
           <span className="text-xs text-zinc-500 font-mono">
             {attributes.length} attributes extracted
           </span>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => handleSubmit("SAVE_DRAFT")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <Save className="h-3.5 w-3.5" />
+            Save draft
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => handleSubmit("ACCEPT_AND_SUBMIT")}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          >
+            <Send className="h-3.5 w-3.5" />
+            Accept & submit
+          </button>
         </div>
       </div>
+
+      {toast && (
+        <div
+          role="alert"
+          className={`fixed bottom-6 right-6 z-50 flex max-w-md items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-2xl ${
+            toast.type === "error"
+              ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/90 dark:text-rose-200"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/90 dark:text-emerald-200"
+          }`}
+        >
+          <span className="flex-1">{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="text-xs font-semibold opacity-70 hover:opacity-100"
+            aria-label="Dismiss notification"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Dual-Pane Layout */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 min-h-0 overflow-hidden">
@@ -219,6 +296,7 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
             auditReasons={auditReasons}
             selectedAttributeId={selectedAttributeId}
             onSelectAttribute={setSelectedAttributeId}
+            onHoverAttribute={setSelectedAttributeId}
             onUpdateAttribute={handleUpdateAttribute}
           />
         </div>

@@ -5,15 +5,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Edit2,
-  Hash,
-  HelpCircle,
-  Key,
   Lock,
   LockOpen,
   ShieldAlert,
-  ShieldCheck,
   Tag,
-  Undo2,
 } from "lucide-react";
 import { ReasonCodeModal } from "@/components/ReasonCodeModal";
 import type { AttributeRecord, ModifiedAttributePayload } from "@/types/domain";
@@ -24,12 +19,12 @@ interface SpecEditorTableProps {
   auditReasons: Map<string, string>;
   selectedAttributeId: string | null;
   onSelectAttribute: (attributeId: string) => void;
+  onHoverAttribute?: (attributeId: string) => void;
   onUpdateAttribute: (
     attributeId: string,
     updated: ModifiedAttributePayload,
     auditReason: string
   ) => void;
-  onResetAttribute?: (attributeId: string) => void;
 }
 
 export function SpecEditorTable({
@@ -38,8 +33,8 @@ export function SpecEditorTable({
   auditReasons,
   selectedAttributeId,
   onSelectAttribute,
+  onHoverAttribute,
   onUpdateAttribute,
-  onResetAttribute,
 }: SpecEditorTableProps) {
   // Inline editing state
   const [editingAttrId, setEditingAttrId] = useState<string | null>(null);
@@ -234,6 +229,7 @@ export function SpecEditorTable({
                 <tr
                   key={attr.attribute_id}
                   onClick={() => onSelectAttribute(attr.attribute_id)}
+                  onMouseEnter={() => onHoverAttribute?.(attr.attribute_id)}
                   className={`group cursor-pointer transition-colors ${
                     isSelected
                       ? "bg-amber-500/10 dark:bg-amber-500/15"

@@ -1,11 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  Maximize2,
-  Minimize2,
   RotateCcw,
   ZoomIn,
   ZoomOut,
@@ -77,6 +75,15 @@ export function PdfCanvasViewer({
   }, [attributes, currentPage]);
 
   const activeBox = pageBoxes.find((b) => b.attributeId === selectedAttributeId);
+
+  useEffect(() => {
+    const selected = attributes.find((attribute) => attribute.attribute_id === selectedAttributeId);
+    const page = selected?.evidence?.bounding_box?.page_number;
+    if (page && page !== currentPage && page <= numPages) {
+      const frame = window.requestAnimationFrame(() => setCurrentPage(page));
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [attributes, currentPage, numPages, selectedAttributeId]);
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 15, 200));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 15, 60));

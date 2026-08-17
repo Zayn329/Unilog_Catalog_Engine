@@ -4,7 +4,11 @@ from app.models.domain import ProductAttribute
 from app.security.hasher import compute_locked_state_hash
 
 
-class LockedAttributeMutationError(PermissionError):
+class SecurityException(PermissionError):
+    """Raised when a security boundary rejects an unsafe state transition."""
+
+
+class LockedAttributeMutationError(SecurityException):
     """Raised when a proposed mutation changes a human-locked value."""
 
 
@@ -26,4 +30,3 @@ def verify_locked_attribute_mutation(
         raise LockedAttributeMutationError(
             f"Gate 8 rejected mutation of locked attribute {locked_attribute.attribute_id}"
         )
-

@@ -26,6 +26,15 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def disable_background_processing_for_api_contract_tests(monkeypatch):
+    """Keep endpoint contract tests independent of the graph worker."""
+    async def _noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.api.v1.jobs.process_job_background", _noop)
+
+
 @pytest.fixture()
 async def client():
     """Async HTTP test client backed by the FastAPI ASGI application."""

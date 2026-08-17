@@ -47,3 +47,32 @@ categories:
       - "outer_diameter"
       - "wall_thickness"
       - "pressure_rating"
+
+  - category_id: "CAT_MOTOR_001"
+    name: "Electric Motors"
+    aliases:
+      - "motor"
+      - "electric motor"
+      - "horsepower"
+      - "hp"
+      - "1ph"
+      - "3ph"
+    path: "Electrical > Motors"
+    required_attributes:
+      - "voltage_rating"
+      - "power_rating"
+      - "weight"
+
+  - category_id: "CAT_DISHWASHER_001"
+    name: "Built-In Dishwashers"
+    aliases:
+      - "dishwasher"
+      - "built-in dishwasher"
+      - "dish washing machine"
+    path: "Appliances & Consumer Electronics > Kitchen Appliances > Built-In Dishwashers"
+    required_attributes:
+      - "series"
+      - "voltage_rating"
+      - "amperage_rating"
+      - "mounting_type"
+      - "material"

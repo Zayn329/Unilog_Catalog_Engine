@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import AsyncGenerator
 
@@ -11,11 +12,21 @@ from sqlmodel import SQLModel
 # Import models so SQLModel.metadata is populated
 import app.db.models  # noqa: F401
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_DB_URL = "sqlite+aiosqlite:///./catalog_engine.db"
 
 
 def get_database_url() -> str:
-    url = os.getenv("DATABASE_URL", DEFAULT_DB_URL)
+    raw_url = os.getenv("DATABASE_URL")
+    if not raw_url:
+        logger.warning(
+            "DATABASE_URL is unset. Defaulting to DB_ENGINE=SQLITE (LOCAL_FALLBACK) at %s",
+            DEFAULT_DB_URL,
+        )
+        return DEFAULT_DB_URL
+
+    url = raw_url
     if url.startswith("sqlite:///"):
         url = url.replace("sqlite:///", "sqlite+aiosqlite:///")
     elif url.startswith("postgresql://"):
@@ -46,9 +57,17 @@ _db_initialized = False
 async def init_db() -> None:
     """Initialize database tables."""
     global _db_initialized
+    if _db_initialized:
+        return
+
+    db_type = "PostgreSQL" if "postgresql" in DATABASE_URL else "SQLite"
+    logger.info("Initializing database schema on %s...", db_type)
+
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+
     _db_initialized = True
+    logger.info("Database schema initialized successfully (%s).", db_type)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -23,14 +24,33 @@ class CategoryOutput(BaseModel):
     terminal_status: Literal["UNCLASSIFIED_HUMAN_REVIEW"] | None = None
 
 
-def _taxonomy_terms() -> list[tuple[str, str, str]]:
+def _taxonomy_terms() -> list[tuple[str, str, str, list[str]]]:
     taxonomy = yaml.safe_load(TAXONOMY_PATH.read_text(encoding="utf-8"))
-    terms: list[tuple[str, str, str]] = []
+    terms: list[tuple[str, str, str, list[str]]] = []
     for category in taxonomy.get("categories", []):
-        terms.append((category["category_id"], category["name"], category["path"]))
+        terms.append(
+            (
+                category["category_id"],
+                category["name"],
+                category["path"],
+                category.get("aliases", []),
+            )
+        )
         for child in category.get("subcategories", []):
-            terms.append((child["category_id"], child["name"], child["path"]))
+            terms.append(
+                (
+                    child["category_id"],
+                    child["name"],
+                    child["path"],
+                    child.get("aliases", []),
+                )
+            )
     return terms
+
+
+def _contains_term(text: str, term: str) -> bool:
+    pattern = r"(?<![a-z0-9])" + re.escape(term.casefold()) + r"(?![a-z0-9])"
+    return re.search(pattern, text) is not None
 
 
 def categorize_document(
@@ -42,9 +62,10 @@ def categorize_document(
     lowered = text.casefold()
     category_id = "UNCLASSIFIED"
     confidence = 0.0
-    for candidate_id, name, path in _taxonomy_terms():
+    for candidate_id, name, path, aliases in _taxonomy_terms():
         terms = [term for term in name.casefold().split() if len(term) > 3]
-        if terms and any(term in lowered for term in terms):
+        terms.extend(alias.casefold() for alias in aliases)
+        if terms and any(_contains_term(lowered, term) for term in terms):
             category_id = candidate_id
             confidence = 0.85
             break

@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
@@ -35,8 +36,13 @@ class ModifiedAttributePayload(BaseModel):
 class ReviewSubmitRequest(BaseModel):
     job_id: UUID
     action: Literal["ACCEPT_AND_SUBMIT", "SAVE_DRAFT"]
-    modified_attributes: List[ModifiedAttributePayload] = Field(default_factory=list)
+    modified_attributes: List[ModifiedAttributePayload] = Field(
+        default_factory=list,
+        alias="attribute_updates",  # Allows both 'attribute_updates' and 'modified_attributes'
+    )
     audit_reason: Optional[str] = None
+
+    model_config = {"populate_by_name": True}
 
 
 @router.get("/queue", status_code=status.HTTP_200_OK)
@@ -69,11 +75,17 @@ def _compute_payload_hash(attr: ModifiedAttributePayload) -> str:
     parts = (
         str(attr.canonical_key or ""),
         str(attr.raw_value or ""),
+        str(attr.normalized_value),
         str(attr.numeric_value),
         str(attr.unit),
         evidence_id_str,
     )
     return sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _get_utc_now_naive() -> datetime:
+    """Return current UTC time without tzinfo for TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @router.post("/submit", status_code=status.HTTP_200_OK)
@@ -82,6 +94,8 @@ async def submit_review(
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Process human review actions with Gate 8 protection and audit logging."""
+    now = _get_utc_now_naive()
+
     if payload.action == "ACCEPT_AND_SUBMIT":
         if not payload.audit_reason or not payload.audit_reason.strip():
             raise HTTPException(
@@ -94,7 +108,6 @@ async def submit_review(
             if attr.is_human_locked:
                 expected_hash = _compute_payload_hash(attr)
                 received_hash = attr.locked_state_hash or ""
-                # Strip prefix if present
                 clean_received = received_hash.removeprefix("sha256:")
                 if clean_received != expected_hash:
                     raise HTTPException(
@@ -105,7 +118,6 @@ async def submit_review(
                         ),
                     )
 
-                # Check if attribute already exists in database with a recorded lock
                 if attr.attribute_id:
                     stmt = select(AttributeRecord).where(
                         AttributeRecord.attribute_id == attr.attribute_id
@@ -131,21 +143,29 @@ async def submit_review(
             user_id="human_reviewer",
             action="ACCEPT_AND_SUBMIT",
             reason_code=payload.audit_reason,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=now,
             details_json=json.dumps(
                 [a.model_dump(mode="json") for a in payload.modified_attributes]
             ),
         )
         session.add(audit_log)
 
-        # Update job if present
+        # Update job status
         job_stmt = select(ProcessingJob).where(ProcessingJob.job_id == payload.job_id)
         job_res = await session.execute(job_stmt)
         job = job_res.scalar_one_or_none()
         if job:
             job.status = "COMPLETED"
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = now
             session.add(job)
+
+            # Update product status directly in database
+            product_id = getattr(job, "product_id", None)
+            if product_id:
+                await session.execute(
+                    text("UPDATE productrecord SET status = 'PUBLISHED' WHERE product_id = :pid"),
+                    {"pid": str(product_id)},
+                )
 
         await session.commit()
 
@@ -157,7 +177,6 @@ async def submit_review(
         }
 
     elif payload.action == "SAVE_DRAFT":
-        # Save draft progress without triggering graph re-validation or audit log
         job_stmt = select(ProcessingJob).where(ProcessingJob.job_id == payload.job_id)
         job_res = await session.execute(job_stmt)
         job = job_res.scalar_one_or_none()
@@ -167,7 +186,7 @@ async def submit_review(
                 "modified_attributes": [
                     a.model_dump(mode="json") for a in payload.modified_attributes
                 ],
-                "draft_saved_at": datetime.now(timezone.utc).isoformat(),
+                "draft_saved_at": now.isoformat(),
             }
             job.graph_state_json = json.dumps(draft_state)
             session.add(job)

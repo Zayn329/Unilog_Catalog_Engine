@@ -23,6 +23,7 @@ class ParserOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     parse_status: Literal["SUCCESS", "FAILED"]
+    parser_engine: Literal["DOCLING", "PDFIUM_FALLBACK"] | None = None
     raw_document_markdown: str | None = None
     page_layout_map: list[PageLayout] = Field(default_factory=list)
     terminal_status: Literal["FAILED_PARSING"] | None = None
@@ -52,12 +53,13 @@ class DoclingParser:
     def parse(self, file_path: str | Path) -> ParserOutput:
         try:
             conversion = self._converter.convert(Path(file_path))
-            if conversion.has_errors:
+            if conversion.has_errors():
                 return self._parse_with_pdfium(file_path, str(conversion.errors))
 
             page_layout_map = self._page_layouts(conversion)
             return ParserOutput(
                 parse_status="SUCCESS",
+                parser_engine="DOCLING",
                 raw_document_markdown=conversion.document.export_to_markdown(),
                 page_layout_map=page_layout_map,
             )
@@ -111,12 +113,14 @@ class DoclingParser:
                 raise ValueError("PDF contained no readable text")
             return ParserOutput(
                 parse_status="SUCCESS",
+                parser_engine="PDFIUM_FALLBACK",
                 raw_document_markdown=markdown,
                 page_layout_map=page_layout_map,
             )
         except Exception as fallback_error:
             return ParserOutput(
                 parse_status="FAILED",
+                parser_engine="PDFIUM_FALLBACK",
                 terminal_status="FAILED_PARSING",
                 error_message=f"Docling: {parser_error}; PDF fallback: {fallback_error}",
             )
@@ -148,10 +152,10 @@ class DoclingParser:
                         text=text,
                         coordinates=(
                             page_number,
-                            bbox.t / height * 100.0,
+                            (height - bbox.t) / height * 100.0,
                             bbox.l / width * 100.0,
                             (bbox.r - bbox.l) / width * 100.0,
-                            (bbox.b - bbox.t) / height * 100.0,
+                            (bbox.t - bbox.b) / height * 100.0,
                         )
                     )
                 )

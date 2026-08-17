@@ -9,6 +9,7 @@ from app.nodes.parser import (
     parse_document,
     parser_router,
 )
+from app.tools.docling_parser import DoclingParser
 
 
 def _single_page_pdf() -> bytes:
@@ -51,8 +52,30 @@ def malformed_pdf(tmp_path: Path) -> Path:
     return path
 
 
+@pytest.fixture(scope="session", autouse=True)
+def local_tmp_path_base(tmp_path_factory: pytest.TempPathFactory):
+    """Keep pytest's generated PDF fixtures out of the restricted OS temp root."""
+    local_base = Path(__file__).parents[2] / ".pytest-tmp"
+    local_base.mkdir(parents=True, exist_ok=True)
+    tmp_path_factory._given_basetemp = local_base
+    yield
+
+
+@pytest.fixture
+def pdfium_fallback_parser(monkeypatch: pytest.MonkeyPatch):
+    """Explicit fixture to test PDFium fallback behavior on demand."""
+    monkeypatch.setattr(
+        DoclingParser,
+        "parse",
+        lambda parser, file_path: DoclingParser._parse_with_pdfium(
+            file_path, "unit-test fallback"
+        ),
+    )
+
+
 def test_parser_output_contains_layout_text_and_page_coordinates(
     readable_pdf: Path,
+    pdfium_fallback_parser: None,
 ) -> None:
     result = parse_document(readable_pdf)
 
@@ -65,6 +88,7 @@ def test_parser_output_contains_layout_text_and_page_coordinates(
 
 def test_parser_output_preserves_text_on_each_coordinate_box(
     readable_pdf: Path,
+    pdfium_fallback_parser: None,
 ) -> None:
     result = parse_document(readable_pdf)
 
@@ -77,6 +101,7 @@ def test_parser_output_preserves_text_on_each_coordinate_box(
 
 def test_parser_extracts_standard_five_element_bounding_boxes(
     readable_pdf: Path,
+    pdfium_fallback_parser: None,
 ) -> None:
     result = parse_document(readable_pdf)
     boxes = extract_bounding_boxes(result)
@@ -94,6 +119,7 @@ def test_parser_extracts_standard_five_element_bounding_boxes(
 
 def test_gate_1_success_passes_and_routes_to_category_agent(
     readable_pdf: Path,
+    pdfium_fallback_parser: None,
 ) -> None:
     result = parse_document(readable_pdf)
     state = ParserState(parse_status=result.parse_status, parser_output=result)
@@ -104,6 +130,7 @@ def test_gate_1_success_passes_and_routes_to_category_agent(
 
 def test_gate_1_failure_routes_to_failed_parsing_and_end(
     malformed_pdf: Path,
+    pdfium_fallback_parser: None,
 ) -> None:
     result = parse_document(malformed_pdf)
     state = ParserState(parse_status=result.parse_status, parser_output=result)

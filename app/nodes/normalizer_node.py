@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 
 from app.models.domain import NormalizationMethodEnum, ProductAttribute
+from app.security.gate8 import verify_locked_attribute_mutation
 from app.tools.pint_normalizer import (
     normalize_scalar,
     normalize_temperature,
@@ -24,10 +25,15 @@ def normalize_attributes(state: NormalizerInput) -> NormalizerOutput:
         raise TypeError("normalize_attributes requires NormalizerInput")
     normalized: list[ProductAttribute] = []
     for attribute in state.attributes:
+        if attribute.is_human_locked:
+            # A locked value is immutable, but a stale or tampered lock must not
+            # be silently accepted merely because normalization skips it.
+            verify_locked_attribute_mutation(attribute, attribute)
+            normalized.append(attribute)
+            continue
         updated = attribute
         if (
-            not attribute.is_human_locked
-            and attribute.numeric_value is not None
+            attribute.numeric_value is not None
             and attribute.unit
         ):
             target_unit = _canonical_target(attribute.unit)

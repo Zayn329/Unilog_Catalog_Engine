@@ -89,12 +89,12 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
       return next;
     });
 
-    setAuditReasons((prev) => {
+   setAuditReasons((prev) => {
       const next = new Map(prev);
       next.set(attributeId, auditReason);
       return next;
     });
-  }, [jobId, selectedAttributeId]);
+  };
 
   const handleSubmit = async (action: "ACCEPT_AND_SUBMIT" | "SAVE_DRAFT") => {
     setSubmitting(true);
@@ -122,10 +122,10 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
             ? err.message
             : "Unable to submit review. Please try again.",
       });
-    } finally {
+     } finally {
       setSubmitting(false);
     }
-  }, [jobId, selectedAttributeId]);
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {

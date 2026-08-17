@@ -69,6 +69,39 @@ def test_category_node_routes_low_confidence_to_unclassified_review() -> None:
     assert result.terminal_status == "UNCLASSIFIED_HUMAN_REVIEW"
 
 
+def test_category_node_classifies_motor_spec_sheet_from_catalog_terms() -> None:
+    result = categorize_document(
+        CategoryInput(
+            raw_document_markdown=(
+                "UNILOG CATALOG SPEC SHEET\n"
+                "SKU: MOT-2026-X\n"
+                "Voltage: 480V AC\n"
+                "Power Rating: 15 HP\n"
+                "Weight: 42.5 kg"
+            )
+        )
+    )
+
+    assert result.category_id == "CAT_MOTOR_001"
+    assert result.category_confidence >= 0.85
+    assert result.category_status == "AUTO_ASSIGNED"
+
+
+def test_category_node_classifies_delivery_csv_dishwasher_category() -> None:
+    result = categorize_document(
+        CategoryInput(
+            raw_document_markdown=(
+                "FRIGIDAIRE Professional Series Dishwasher\n"
+                "Built-in mounting, 120 V, stainless steel"
+            )
+        )
+    )
+
+    assert result.category_id == "CAT_DISHWASHER_001"
+    assert result.category_confidence >= 0.85
+    assert result.category_status == "AUTO_ASSIGNED"
+
+
 def test_extractor_rejects_orphan_attributes_and_preserves_source_evidence() -> None:
     state = ExtractorInput(
         category_id="BALL_VALVE",

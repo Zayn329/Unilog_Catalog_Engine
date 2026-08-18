@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Tag,
 } from "lucide-react";
+import { CrossRefDrawer, type CompetitorMatch } from "@/components/CrossRefDrawer";
 import { ReasonCodeModal } from "@/components/ReasonCodeModal";
 import type { AttributeRecord, ModifiedAttributePayload } from "@/types/domain";
 
@@ -25,6 +26,7 @@ interface SpecEditorTableProps {
     updated: ModifiedAttributePayload,
     auditReason: string
   ) => void;
+  productSku?: string;
 }
 
 export function SpecEditorTable({
@@ -35,6 +37,7 @@ export function SpecEditorTable({
   onSelectAttribute,
   onHoverAttribute,
   onUpdateAttribute,
+  productSku = "PART-SPEC-01",
 }: SpecEditorTableProps) {
   // Inline editing state
   const [editingAttrId, setEditingAttrId] = useState<string | null>(null);
@@ -43,6 +46,9 @@ export function SpecEditorTable({
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
+  const [crossRefOpen, setCrossRefOpen] = useState(false);
+  const [crossRefMatches, setCrossRefMatches] = useState<CompetitorMatch[]>([]);
+  const [crossRefTarget, setCrossRefTarget] = useState(productSku);
   const [pendingChange, setPendingChange] = useState<{
     attributeId: string;
     attributeKey: string;
@@ -51,6 +57,90 @@ export function SpecEditorTable({
     newValue: string;
     payload: ModifiedAttributePayload;
   } | null>(null);
+
+  const openEquivalentDrawer = (attr: AttributeRecord) => {
+    const baseSpecDifferences = attributes
+      .filter((item) => item.attribute_id !== attr.attribute_id)
+      .slice(0, 5)
+      .map((item, index) => {
+        const targetValue = item.normalized_value ?? item.raw_value ?? "—";
+        const competitorValue =
+          index % 2 === 0
+            ? targetValue
+            : `${((item.numeric_value ?? 0) * (index === 1 ? 0.94 : 1.06)).toFixed(2)} ${item.unit ?? ""}`.trim();
+
+        return {
+          key: item.canonical_key,
+          targetValue,
+          competitorValue,
+          isMatch: index % 2 === 0,
+        };
+      });
+
+    const matches: CompetitorMatch[] = [
+      {
+        id: "bristol-440",
+        brand: "Bristol",
+        partNumber: "BRST-440-UV",
+        parityScore: 96,
+        matchStatus: "exact",
+        datasheetUrl: "https://example.com/competitor/bristol",
+        specDifferences: [
+          {
+            key: attr.canonical_key,
+            targetValue: attr.normalized_value ?? attr.raw_value ?? "—",
+            competitorValue: attr.normalized_value ?? attr.raw_value ?? "—",
+            isMatch: true,
+          },
+          ...baseSpecDifferences,
+        ],
+      },
+      {
+        id: "viega-210",
+        brand: "Viega",
+        partNumber: "VIEGA-210-FS",
+        parityScore: 88,
+        matchStatus: "equivalent",
+        datasheetUrl: "https://example.com/competitor/viega",
+        specDifferences: [
+          {
+            key: attr.canonical_key,
+            targetValue: attr.normalized_value ?? attr.raw_value ?? "—",
+            competitorValue: `${((attr.numeric_value ?? 0) * 1.08).toFixed(2)} ${attr.unit ?? ""}`.trim(),
+            isMatch: false,
+          },
+          ...baseSpecDifferences.map((item, index) => ({
+            ...item,
+            isMatch: index % 2 !== 0,
+          })),
+        ],
+      },
+      {
+        id: "trade-778",
+        brand: "TradeStar",
+        partNumber: "TS-778-HP",
+        parityScore: 74,
+        matchStatus: "divergent",
+        datasheetUrl: "https://example.com/competitor/tradestar",
+        specDifferences: [
+          {
+            key: attr.canonical_key,
+            targetValue: attr.normalized_value ?? attr.raw_value ?? "—",
+            competitorValue: `${((attr.numeric_value ?? 0) * 1.2).toFixed(2)} ${attr.unit ?? ""}`.trim(),
+            isMatch: false,
+          },
+          ...baseSpecDifferences.map((item, index) => ({
+            ...item,
+            isMatch: index % 3 !== 0,
+          })),
+        ],
+      },
+    ];
+
+    setCrossRefTarget(productSku);
+    setCrossRefMatches(matches);
+    setCrossRefOpen(true);
+  };
 
   const getGateBadge = (attr: AttributeRecord) => {
     // Check confidence and validation
@@ -389,25 +479,37 @@ export function SpecEditorTable({
 
                   {/* Human Lock Toggle */}
                   <td className="py-3 px-2 align-top text-center">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleHumanLock(attr);
-                      }}
-                      className={`p-1.5 rounded-lg transition-all ${
-                        isLocked
-                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/30"
-                          : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                      }`}
-                      title={isLocked ? "Gate 8 Human Locked" : "Unlocked (Click to Lock)"}
-                    >
-                      {isLocked ? (
-                        <Lock className="w-3.5 h-3.5" />
-                      ) : (
-                        <LockOpen className="w-3.5 h-3.5 opacity-60" />
-                      )}
-                    </button>
+                    <div className="flex flex-col items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEquivalentDrawer(attr);
+                        }}
+                        className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200 transition hover:border-emerald-400/50 hover:bg-emerald-500/15"
+                      >
+                        Find Equivalent
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleHumanLock(attr);
+                        }}
+                        className={`p-1.5 rounded-lg transition-all ${
+                          isLocked
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/30"
+                            : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                        }`}
+                        title={isLocked ? "Gate 8 Human Locked" : "Unlocked (Click to Lock)"}
+                      >
+                        {isLocked ? (
+                          <Lock className="w-3.5 h-3.5" />
+                        ) : (
+                          <LockOpen className="w-3.5 h-3.5 opacity-60" />
+                        )}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -415,6 +517,13 @@ export function SpecEditorTable({
           </tbody>
         </table>
       </div>
+
+      <CrossRefDrawer
+        isOpen={crossRefOpen}
+        onClose={() => setCrossRefOpen(false)}
+        targetPartNumber={crossRefTarget}
+        competitorMatches={crossRefMatches}
+      />
 
       {/* Reason Code Modal */}
       {pendingChange && (

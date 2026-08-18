@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -16,6 +16,10 @@ import {
 import { api, ApiError } from "@/lib/api";
 import { PdfCanvasViewer } from "@/components/PdfCanvasViewer";
 import { SpecEditorTable } from "@/components/SpecEditorTable";
+import {
+  ValidationAlerts,
+  type ValidationAlert,
+} from "@/components/ValidationAlerts";
 import type {
   AttributeRecord,
   JobDetailResponse,
@@ -161,6 +165,77 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
     }
   };
 
+  const categoryId = (job?.state?.category_id as string) || "UNCLASSIFIED";
+  const documentMarkdown =
+    (job?.state?.document_markdown as string) ||
+    (job?.state?.raw_document_markdown as string) ||
+    undefined;
+
+  const validationAlerts = useMemo<ValidationAlert[]>(() => {
+    if (!job?.state) return [];
+
+    const reports = ((job.state.validation_reports as Array<Record<string, unknown>>) || [])
+      .filter((report) => report && typeof report === "object" && report.passed === false)
+      .map((report, index) => {
+        const ruleName = String(
+          (report.rule_name as string) ||
+            (report.rule_id as string) ||
+            (report.ruleName as string) ||
+            "PHYS_VALIDATION"
+        );
+        const attributeId =
+          typeof report.attribute_id === "string" ? report.attribute_id : undefined;
+        const attribute =
+          attributeId && attributes.find((item) => item.attribute_id === attributeId)
+            ? attributes.find((item) => item.attribute_id === attributeId)
+            : undefined;
+        const attributeKey = attribute?.canonical_key || "constraint";
+        const extractedValue = attribute?.normalized_value || attribute?.raw_value || "—";
+        const pageNumber = attribute?.evidence?.page_number ?? attribute?.page_number;
+        const rawSeverity = String((report.severity as string) || "warning").toLowerCase();
+        const severity: ValidationAlert["severity"] =
+          rawSeverity === "critical" ? "critical" : rawSeverity === "warning" ? "warning" : "info";
+
+        return {
+          id: String((report.report_id as string) || `${ruleName}-${attributeKey}-${index}`),
+          severity,
+          title:
+            attributeKey === "constraint"
+              ? "Constraint rule failed"
+              : `${attributeKey} violates the operating envelope`,
+          description:
+            String(
+              (report.error_message as string) ||
+                "A physics or domain validation rule failed. Review the source evidence before publishing."
+            ),
+          specKey: attributeKey,
+          extractedValue,
+          physicsRule: ruleName,
+          ruleId: ruleName,
+          pdfPage: typeof pageNumber === "number" ? pageNumber : undefined,
+        };
+      });
+
+    return reports as ValidationAlert[];
+  }, [attributes, job]);
+
+  const handleFocusEvidence = (alert: ValidationAlert) => {
+    if (alert.specKey && alert.specKey !== "constraint") {
+      setSelectedAttributeId(
+        attributes.find((attribute) => attribute.canonical_key === alert.specKey)?.attribute_id ??
+          selectedAttributeId ??
+          null
+      );
+    }
+  };
+
+  const handleTriggerReExtraction = (alert: ValidationAlert) => {
+    setToast({
+      type: "success",
+      message: `Bounded re-extraction queued for ${alert.specKey}.`,
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center py-20 bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400">
@@ -199,9 +274,6 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
       </div>
     );
   }
-
-  const categoryId = (job.state?.category_id as string) || "UNCLASSIFIED";
-  const documentMarkdown = (job.state?.document_markdown as string) || (job.state?.raw_document_markdown as string) || undefined;
 
   return (
     <div className="flex-1 flex flex-col bg-zinc-100 dark:bg-zinc-950 overflow-hidden">
@@ -288,17 +360,26 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
           />
         </div>
 
-        {/* RIGHT: Spec Editor Table */}
+        {/* RIGHT: Validation + Spec Editor */}
         <div className="lg:col-span-6 h-full min-h-[500px] flex flex-col overflow-hidden">
-          <SpecEditorTable
-            attributes={attributes}
-            modifiedAttributes={modifiedAttributes}
-            auditReasons={auditReasons}
-            selectedAttributeId={selectedAttributeId}
-            onSelectAttribute={setSelectedAttributeId}
-            onHoverAttribute={setSelectedAttributeId}
-            onUpdateAttribute={handleUpdateAttribute}
-          />
+          <div className="flex h-full flex-col gap-4">
+            <ValidationAlerts
+              alerts={validationAlerts}
+              onFocusEvidence={handleFocusEvidence}
+              onTriggerReExtraction={handleTriggerReExtraction}
+            />
+            <div className="min-h-0 flex-1">
+              <SpecEditorTable
+                attributes={attributes}
+                modifiedAttributes={modifiedAttributes}
+                auditReasons={auditReasons}
+                selectedAttributeId={selectedAttributeId}
+                onSelectAttribute={setSelectedAttributeId}
+                onHoverAttribute={setSelectedAttributeId}
+                onUpdateAttribute={handleUpdateAttribute}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

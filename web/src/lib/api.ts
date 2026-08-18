@@ -102,4 +102,23 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+
+  /**
+   * Retry extraction on an existing job with optional overrides.
+   */
+  async retryJob(
+    jobId: string,
+    options?: {
+      force_category_id?: string | null;
+      skip_category_validation?: boolean;
+    }
+  ): Promise<{ job_id: string; status: string; message: string }> {
+    return request<{ job_id: string; status: string; message: string }>(
+      `/jobs/${jobId}/retry`,
+      {
+        method: "POST",
+        body: JSON.stringify(options || {}),
+      }
+    );
+  },
 };

@@ -166,10 +166,32 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
   };
 
   const categoryId = (job?.state?.category_id as string) || "UNCLASSIFIED";
+  const categoryConfidence = Number((job?.state?.category_confidence as number) || 0);
+  const isUnclassified = job?.status === "UNCLASSIFIED_HUMAN_REVIEW";
   const documentMarkdown =
     (job?.state?.document_markdown as string) ||
     (job?.state?.raw_document_markdown as string) ||
     undefined;
+
+  const handleRetryExtraction = async (skipValidation: boolean) => {
+    setSubmitting(true);
+    try {
+      await api.retryJob(jobId, {
+        skip_category_validation: skipValidation,
+        force_category_id: null,
+      });
+      setToast({ type: "success", message: "Extraction retry started" });
+      // Refresh job after a delay
+      setTimeout(() => fetchJob(), 2000);
+    } catch (err) {
+      setToast({
+        type: "error",
+        message: err instanceof Error ? err.message : "Retry failed",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const validationAlerts = useMemo<ValidationAlert[]>(() => {
     if (!job?.state) return [];
@@ -324,6 +346,34 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
           </button>
         </div>
       </div>
+
+      {isUnclassified && (
+        <div className="px-6 py-4 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 flex-1">
+            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-amber-900 dark:text-amber-100">
+                Category confidence below threshold
+              </h3>
+              <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                The document was parsed but the categorization confidence is {(categoryConfidence * 100).toFixed(1)}% (threshold: 60%). 
+                You can either retry extraction by skipping category validation, or manually classify the document first.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleRetryExtraction(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-700"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Skip validation & retry
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div

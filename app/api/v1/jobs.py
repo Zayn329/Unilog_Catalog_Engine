@@ -27,6 +27,12 @@ UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+class RetryJobRequest(BaseModel):
+    """Request to re-run extraction on an existing job."""
+    force_category_id: str | None = None
+    skip_category_validation: bool = False
+
+
 def _utc_now_naive() -> datetime:
     """Returns current UTC time without timezone metadata for asyncpg compatibility."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -123,7 +129,12 @@ async def _persist_product(
         )
 
 
-async def process_job_background(job_id: UUID, file_path: str) -> None:
+async def process_job_background(
+    job_id: UUID,
+    file_path: str,
+    force_category_id: str | None = None,
+    skip_category_validation: bool = False,
+) -> None:
     """Execute one uploaded document using an independent database session."""
     await init_db()
     async with async_session_factory() as session:
@@ -145,7 +156,7 @@ async def process_job_background(job_id: UUID, file_path: str) -> None:
             "page_layout_map": None,
             "parse_status": None,
             "terminal_status": None,
-            "category_id": None,
+            "category_id": force_category_id,
             "category_confidence": 0.0,
             "sku_segments": [],
             "attributes": [],
@@ -154,6 +165,8 @@ async def process_job_background(job_id: UUID, file_path: str) -> None:
             "has_critical_failures": False,
             "has_been_enriched": False,
             "product": None,
+            "force_category_id": force_category_id,
+            "skip_category_validation": skip_category_validation,
         }
         final_state = graph.invoke(initial_state)
         product = final_state.get("product")
@@ -273,6 +286,72 @@ async def upload_job(
         "file_path": job.file_path,
         "created_at": job.created_at.isoformat(),
     }
+
+
+@router.post("/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+async def retry_job(
+    job_id: UUID,
+    request: RetryJobRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, object]:
+    """Re-run extraction on an existing job with optional overrides."""
+    job = await session.get(ProcessingJob, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found",
+        )
+
+    file_path = job.file_path
+    if not Path(file_path).exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF file no longer exists on disk",
+        )
+
+    job.status = "PROCESSING"
+    job.completed_at = None
+    job.error_code = None
+    job.error_message = None
+    session.add(job)
+    await session.commit()
+
+    background_tasks.add_task(
+        process_job_background,
+        job_id,
+        file_path,
+        force_category_id=request.force_category_id,
+        skip_category_validation=request.skip_category_validation,
+    )
+
+    return {
+        "job_id": str(job_id),
+        "status": "PROCESSING",
+        "message": "Extraction retry started",
+    }
+
+
+@router.get("", status_code=status.HTTP_200_OK)
+async def list_jobs(
+    session: AsyncSession = Depends(get_session),
+) -> list[dict[str, object]]:
+    """Return all processing jobs."""
+    statement = select(ProcessingJob).order_by(ProcessingJob.created_at.desc())
+    result = await session.execute(statement)
+    jobs = result.scalars().all()
+
+    jobs_list = []
+    for job in jobs:
+        jobs_list.append(
+            {
+                "job_id": str(job.job_id),
+                "status": job.status,
+                "file_path": job.file_path,
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+            }
+        )
+    return jobs_list
 
 
 @router.get("/{job_id}", status_code=status.HTTP_200_OK)

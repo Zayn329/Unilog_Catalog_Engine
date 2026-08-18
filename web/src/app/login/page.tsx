@@ -1,24 +1,70 @@
 "use client";
 
-import Link from "next/link";
 import { ArrowRight, Building2, CheckCircle2, Lock, ShieldCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const roleOptions = [
   {
     id: "senior-auditor",
     label: "Senior Auditor",
+    value: "SENIOR_AUDITOR",
     sublabel: "Review quality, evidence, and exception handling",
   },
   {
     id: "pim-admin",
     label: "PIM Admin",
+    value: "PIM_ADMIN",
     sublabel: "Route, publish, and manage schema delivery",
   },
 ] as const;
 
 export default function LoginPage() {
+  const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<(typeof roleOptions)[number]["id"]>("senior-auditor");
+  const [email, setEmail] = useState("auditor@unilog.com");
+  const [password, setPassword] = useState("auditor123");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedRoleValue =
+    roleOptions.find((role) => role.id === selectedRole)?.value ?? "SENIOR_AUDITOR";
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api/v1"}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          role: selectedRoleValue,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.detail ?? "Login failed");
+      }
+
+      localStorage.setItem("unilog_session", JSON.stringify({
+        token: data.token,
+        user: data.user,
+        role: data.user.role,
+      }));
+
+      router.push("/jobs");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100 sm:px-6 lg:px-8">
@@ -81,7 +127,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <form className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="enterprise-id" className="mb-2 block text-sm font-medium text-zinc-200">
                 Enterprise email
@@ -89,7 +135,8 @@ export default function LoginPage() {
               <input
                 id="enterprise-id"
                 type="email"
-                defaultValue="auditor@unilog.com"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
               />
             </div>
@@ -101,7 +148,8 @@ export default function LoginPage() {
               <input
                 id="password"
                 type="password"
-                defaultValue="••••••••"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
                 className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20"
               />
             </div>
@@ -114,14 +162,21 @@ export default function LoginPage() {
               <button type="button" className="text-emerald-300 hover:text-emerald-200">Need help?</button>
             </div>
 
+            {error && (
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-3 pt-2">
-              <Link
-                href="/jobs"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                Continue with {selectedRole === "pim-admin" ? "PIM Admin" : "Senior Auditor"}
+                {loading ? "Signing in..." : `Continue with ${selectedRole === "pim-admin" ? "PIM Admin" : "Senior Auditor"}`}
                 <ArrowRight className="h-4 w-4" />
-              </Link>
+              </button>
 
               <button
                 type="button"

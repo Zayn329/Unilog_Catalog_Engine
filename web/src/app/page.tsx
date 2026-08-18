@@ -65,10 +65,10 @@ export default function HomePage() {
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link
-                  href="/login"
+                  href="/upload"
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
                 >
-                  Launch workspace
+                  Start extraction
                   <ArrowRight className="h-4 w-4" />
                 </Link>
 

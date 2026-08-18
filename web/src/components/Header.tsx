@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, Layers, ListTodo } from "lucide-react";
+import { ArrowUpRight, Layers, ListTodo, LogIn } from "lucide-react";
 import { useState } from "react";
 import { PimExportModal } from "@/components/PimExportModal";
 
@@ -25,11 +25,18 @@ export function Header() {
 
             <nav className="flex items-center gap-1 sm:gap-2">
               <Link
-                href="/review"
+                href="/jobs"
                 className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50"
               >
                 <ListTodo className="h-4 w-4" />
-                Review Queue
+                Jobs
+              </Link>
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800/60 dark:hover:text-zinc-50"
+              >
+                <LogIn className="h-4 w-4" />
+                Login
               </Link>
             </nav>
           </div>

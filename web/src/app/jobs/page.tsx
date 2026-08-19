@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BriefcaseBusiness, CheckCircle2, FolderOpen, Sparkles, Upload, Loader2 } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, CheckCircle2, FolderOpen, Sparkles, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Job {

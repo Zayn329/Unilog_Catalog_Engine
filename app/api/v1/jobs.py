@@ -376,14 +376,69 @@ async def get_job(
             state = json.loads(job.graph_state_json)
         except Exception:
             state = {}
-    else:
-        state = {
-            "job_id": str(job.job_id),
-            "file_path": job.file_path,
-            "parse_status": None,
-            "category_id": None,
-            "attributes": [],
-        }
+
+    if not state.get("attributes"):
+        prod_stmt = select(ProductRecord).where(ProductRecord.job_id == job_id)
+        prod_res = await session.execute(prod_stmt)
+        product_rec = prod_res.scalar_one_or_none()
+        if product_rec:
+            attr_stmt = select(AttributeRecord).where(
+                AttributeRecord.product_id == product_rec.product_id
+            )
+            attr_res = await session.execute(attr_stmt)
+            db_attrs = attr_res.scalars().all()
+            reconstructed_attrs = []
+            for a in db_attrs:
+                bbox = None
+                if a.bounding_box_json:
+                    try:
+                        bbox_coords = json.loads(a.bounding_box_json)
+                        if isinstance(bbox_coords, list) and len(bbox_coords) == 5:
+                            bbox = {
+                                "page_number": bbox_coords[0],
+                                "top_pct": bbox_coords[1],
+                                "left_pct": bbox_coords[2],
+                                "width_pct": bbox_coords[3],
+                                "height_pct": bbox_coords[4],
+                            }
+                    except Exception:
+                        bbox = None
+                reconstructed_attrs.append(
+                    {
+                        "attribute_id": str(a.attribute_id),
+                        "canonical_key": a.canonical_key,
+                        "raw_key": a.raw_key,
+                        "raw_value": a.raw_value,
+                        "normalized_value": a.normalized_value,
+                        "numeric_value": a.numeric_value,
+                        "unit": a.unit,
+                        "attribute_confidence": a.attribute_confidence,
+                        "normalization_method": a.normalization_method,
+                        "is_derived": a.is_derived,
+                        "is_human_locked": a.is_human_locked,
+                        "locked_state_hash": a.locked_state_hash,
+                        "requires_human_review": a.requires_human_review,
+                        "evidence_id": str(a.evidence_id)
+                        if a.evidence_id
+                        else str(a.attribute_id),
+                        "evidence": {
+                            "evidence_id": str(a.evidence_id)
+                            if a.evidence_id
+                            else str(a.attribute_id),
+                            "evidence_type": a.evidence_type,
+                            "source_text": a.source_text,
+                            "page_number": a.page_number or 1,
+                            "bounding_box": bbox,
+                            "confidence_score": a.evidence_confidence,
+                            "is_verified": a.evidence_is_verified,
+                        },
+                    }
+                )
+            state["attributes"] = reconstructed_attrs
+            if not state.get("category_id"):
+                state["category_id"] = product_rec.category_id
+            if not state.get("extracted_sku"):
+                state["extracted_sku"] = product_rec.sku
 
     return {
         "job_id": str(job.job_id),

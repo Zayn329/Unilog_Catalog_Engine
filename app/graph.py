@@ -117,10 +117,13 @@ def _seed_attributes(record: Mapping[str, Any]) -> list[ProductAttribute]:
 
 def _product(state: GraphState, status: ProductStatusEnum = ProductStatusEnum.RAW) -> Product:
     record = _seed_record(state)
+    segments = state.get("sku_segments") or []
     if record:
         sku = str(record.get("sku", "UNKNOWN"))
+    elif segments and isinstance(segments[0], Mapping) and "sku" in segments[0]:
+        sku = str(segments[0]["sku"])
     else:
-        sku = str(state.get("extracted_sku") or "UNKNOWN")
+        sku = "UNKNOWN"
 
     return Product(
         product_id=uuid4(),
@@ -138,7 +141,6 @@ def _parser_agent(state: GraphState) -> GraphState:
         text = str(state["raw_document_markdown"])
         state["document_markdown"] = text
         state["parse_status"] = "SUCCESS"
-        state["parser_engine"] = state.get("parser_engine") or "DOCLING"
         state["page_layout_map"] = [
             PageLayout(
                 page_number=1,
@@ -184,8 +186,8 @@ def _extractor_agent(state: GraphState) -> GraphState:
         )
     )
     state["attributes"] = result.attributes
-    if result.extracted_sku:
-        state["extracted_sku"] = result.extracted_sku
+    if result.extracted_sku and not state.get("sku_segments"):
+        state["sku_segments"] = [{"sku": result.extracted_sku}]
     return state
 
 

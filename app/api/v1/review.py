@@ -181,14 +181,17 @@ async def submit_review(
         job_res = await session.execute(job_stmt)
         job = job_res.scalar_one_or_none()
         if job:
-            draft_state = {
-                "job_id": str(payload.job_id),
-                "modified_attributes": [
-                    a.model_dump(mode="json") for a in payload.modified_attributes
-                ],
-                "draft_saved_at": now.isoformat(),
-            }
-            job.graph_state_json = json.dumps(draft_state)
+            existing_state = {}
+            if job.graph_state_json:
+                try:
+                    existing_state = json.loads(job.graph_state_json)
+                except Exception:
+                    existing_state = {}
+            existing_state["modified_attributes"] = [
+                a.model_dump(mode="json") for a in payload.modified_attributes
+            ]
+            existing_state["draft_saved_at"] = now.isoformat()
+            job.graph_state_json = json.dumps(existing_state)
             session.add(job)
             await session.commit()
 

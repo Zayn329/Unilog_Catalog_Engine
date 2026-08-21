@@ -20,7 +20,6 @@ def parser_node(state: GraphState) -> GraphState:
     state["document_markdown"] = result.raw_document_markdown  # type: ignore[typeddict-item]
     state["page_layout_map"] = result.page_layout_map
     state["parse_status"] = result.parse_status  # type: ignore[typeddict-item]
-    state["parser_engine"] = result.parser_engine  # type: ignore[typeddict-item]
     state["terminal_status"] = result.terminal_status  # type: ignore[typeddict-item]
     return state
 

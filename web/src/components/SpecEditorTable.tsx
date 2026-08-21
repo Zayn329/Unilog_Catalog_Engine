@@ -304,7 +304,15 @@ export function SpecEditorTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 text-zinc-800 dark:text-zinc-200 font-sans">
-            {attributes.map((attr) => {
+            {attributes.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-12 text-center text-zinc-400">
+                  <p className="text-sm font-medium">No attributes extracted yet.</p>
+                  <p className="text-xs text-zinc-500 mt-1">Click &quot;Re-extract&quot; to run extraction on this document.</p>
+                </td>
+              </tr>
+            ) : (
+              attributes.map((attr) => {
               const isSelected = selectedAttributeId === attr.attribute_id;
               const modified = modifiedAttributes.get(attr.attribute_id);
               const isModified = !!modified;
@@ -513,7 +521,8 @@ export function SpecEditorTable({
                   </td>
                 </tr>
               );
-            })}
+            })
+          )}
           </tbody>
         </table>
       </div>

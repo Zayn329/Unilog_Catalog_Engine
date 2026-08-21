@@ -71,6 +71,7 @@ export function PdfCanvasViewer({
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [showBoxes, setShowBoxes] = useState(true);
+  const [viewMode, setViewMode] = useState<"styled" | "raw">("styled");
 
   const numPages = Math.max(1, totalPages);
 
@@ -177,6 +178,15 @@ export function PdfCanvasViewer({
         <div className="flex items-center gap-1">
           <button
             type="button"
+            onClick={() => setViewMode(viewMode === "styled" ? "raw" : "styled")}
+            className="px-2 py-1 rounded-md text-[11px] font-medium border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 transition-colors"
+            title="Toggle between structured engineering datasheet and raw text"
+          >
+            {viewMode === "styled" ? "Styled View" : "Raw Markdown"}
+          </button>
+          <div className="h-4 w-px bg-zinc-800 mx-1" />
+          <button
+            type="button"
             onClick={() => setShowBoxes(!showBoxes)}
             className={`p-1.5 rounded-md transition-colors ${
               showBoxes
@@ -231,7 +241,7 @@ export function PdfCanvasViewer({
           className="relative bg-white text-zinc-900 rounded-sm shadow-2xl overflow-hidden border border-zinc-300 shrink-0 select-text"
         >
           {/* Document Content */}
-          {documentMarkdown ? (
+          {viewMode === "raw" && documentMarkdown ? (
             <div className="p-8 font-mono text-xs whitespace-pre-wrap text-zinc-800 bg-white leading-relaxed">
               {documentMarkdown}
             </div>

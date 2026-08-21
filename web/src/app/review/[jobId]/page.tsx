@@ -329,6 +329,16 @@ export default function ReviewWorkbenchPage({ params }: PageProps) {
           <button
             type="button"
             disabled={submitting}
+            onClick={() => handleRetryExtraction(false)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            title="Re-run autonomous multi-agent catalog extraction on this document"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${submitting ? "animate-spin" : ""}`} />
+            Re-extract
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
             onClick={() => handleSubmit("SAVE_DRAFT")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
           >

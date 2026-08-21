@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BriefcaseBusiness, CheckCircle2, FolderOpen, Sparkles, Loader2 } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, CheckCircle2, FolderOpen, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 
 interface Job {
   job_id: string;
@@ -14,30 +15,47 @@ interface Job {
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/jobs`
-        );
+  const fetchJobs = async () => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/jobs`
+      );
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch jobs");
-        }
-
-        const data = await response.json();
-        setJobs(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load jobs");
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        throw new Error("Failed to fetch jobs");
       }
-    };
 
+      const data = await response.json();
+      setJobs(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load jobs");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchJobs();
   }, []);
+
+  const handleRetry = async (jobId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRetryingId(jobId);
+    try {
+      await api.retryJob(jobId);
+      setTimeout(() => {
+        fetchJobs();
+        setRetryingId(null);
+      }, 1500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to retry extraction");
+      setRetryingId(null);
+    }
+  };
 
   const formatFilename = (filePath: string) => {
     const parts = filePath.split(/[/\\]/);
@@ -184,6 +202,17 @@ export default function JobsPage() {
                       ) : null}
                       {getStatusLabel(job.status)}
                     </span>
+
+                    <button
+                      type="button"
+                      disabled={retryingId === job.job_id}
+                      onClick={(e) => handleRetry(job.job_id, e)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-800 disabled:opacity-50"
+                      title="Re-trigger extraction pipeline on this job"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${retryingId === job.job_id ? "animate-spin text-emerald-400" : ""}`} />
+                      {retryingId === job.job_id ? "Starting..." : "Re-extract"}
+                    </button>
 
                     <Link
                       href={`/review/${job.job_id}`}

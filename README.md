@@ -1,4 +1,3 @@
----
 # SpecForge
 
 **Evidence-First Zero-Trust Product Intelligence & Parametric 3D Catalog Engine**

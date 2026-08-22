@@ -1,161 +1,157 @@
-SpecForge: AI-Powered Product Intelligence for Industrial Commerce
-> Evidence-First Multi-Agent Catalog Engine with Zero-Trust Physics Validation, Parametric WebGL 3D CAD Generation, and Real-Time Stress Simulation.
-> 
-Next.js
+---
+# SpecForge
 
-FastAPI
+**Evidence-First Zero-Trust Product Intelligence & Parametric 3D Catalog Engine**
 
-React Three Fiber
+---
 
-LangGraph
+## 📌 Links & Live Deployment
 
-License: MIT
-📌 Executive Overview
-Industrial commerce relies on legacy vendor datasheets, blurry scanned PDFs, and dense engineering diagrams. Standard generative AI parsers present a major operational hazard: they hallucinate context, alter decimal places, and invent non-existent specifications. In B2B engineering, a single hallucinated pressure or temperature rating causes catastrophic equipment failure, costly returns, and life-safety risks.
-SpecForge solves this with a Zero-Trust Hybrid Architecture. Large Language Models (LLMs) act strictly as semantic text parsers, while deterministic Python code, unit-normalization engines (Pint), and physical material matrices own all arithmetic, safety boundaries, and validation. Every extracted attribute is anchored to its source PDF bounding box and procedurally rendered as an interactive, rotatable WebGL 3D CAD asset.
-✨ Key Features
-1. 🔍 Layout-Aware Ingestion & 2D Spatial Provenance
- * Docling & PDFium Engine: Parses multi-column tables, rotated technical text, and unstructured spec sheets without static template rules.
- * 1-Click Spatial Bounding Box Link: Binds every extracted specification key-value pair directly to its source 2D coordinates [page, x1, y1, x2, y2]. Clicking an attribute auto-scrolls and highlights the exact PDF cell.
-2. 🛡️ 8-Gate Deterministic Physics Validation
- * Zero-Trust Rule Execution: Extracted parameters (operating temperature, pressure, flow rate) pass through independent physical material constraint matrices.
- * Non-Invasive Anomaly Alerts: Flags physical impossibilities (e.g., a PVC pipe assigned a 450°F rating) instantly in ValidationAlerts.tsx. The raw extracted spec remains uncorrupted for auditability.
-3. 🧊 Parametric WebGL 3D CAD Viewport
- * Procedural Three.js Generation: Maps parsed dimensional attributes (Outer Diameter, Inner Diameter, Length, Port Size) directly into rotatable 3D CAD geometry using @react-three/fiber—no pre-existing CAD files required.
-4. 🔥 Real-Time Physics Stress & Thermal Failure Simulator
- * Dynamic WebGL Shaders: Interpolates surface heat-map gradients from Emerald (Safe) to Amber (Warning) to Rose Wireframe (Rupture).
- * Vertex Displacement Animations: Simulates structural fracture and vibration in real time when operating pressure or temperature sliders cross material yield thresholds.
-5. 🔀 Vector-Based Competitor Cross-Referencing
- * Qdrant Similarity Search: Vectorizes normalized spec arrays to match equivalent SKUs across competitor catalogs.
- * Spec-Parity Scoring: Generates side-by-side comparison tables highlighting exact dimension matches versus parameter discrepancies.
-6. 📤 Multi-Schema PIM Exporter
- * Enterprise PIM Transformation: Exports verified catalog data directly into Akeneo, Pimcore, InRiver, or Standard JSON formats.
- * Embedded Spatial Provenance: Every exported JSON attribute carries bounding-box origin metadata for 100% audit compliance.
-🏗️ System Architecture & Execution Pipeline
-[ Raw Legacy PDF / Datasheet ]
-             │
-             ▼
-[ Stage 1: Layout-Aware Parsing ]
-  ├── Docling / PDFium ────────► Spatial Coordinate Extraction [x1, y1, x2, y2, page]
-  ├── Groq Llama-3 API ─────────► Raw Key-Value Spec Extraction
-  └── Pint Engine ──────────────► Base Unit Normalizer (Metric / Imperial)
-             │
-             ▼
-[ Stage 2: Zero-Trust Physics Gate ]
-  ├── Evaluates specs against MaterialLimits DB (e.g., PVC max = 140°F)
-  └── Decision Gate: Physical anomaly detected?
-        ├── YES ──► Raise Critical ValidationAlert + Highlight PDF Source Cell
-        └── NO  ──► Mark Spec Status as Verified ('SAFE')
-             │
-             ▼
-[ Stage 3: Parametric CAD Mapping ]
-  ├── cadMapper.ts parses dimensions (OD, ID, Length, Flange)
-  └── R3F Canvas renders procedural WebGL 3D Mesh
-             │
-             ▼
-[ Stage 4: Real-Time Stress Runtime ]
-  ├── stressSimulator.ts calculates Stress Index (Operating / Yield Limit)
-  └── Decision Gate: Stress Index >= 1.0 (Rupture Threshold)?
-        ├── YES ──► Activate Vertex Displacement Shader & Red Wireframe
-        └── NO  ──► Render Emerald-to-Amber Heat-Map Gradient
-             │
-             ├──► [ Stage 5: Qdrant Vector Cross-Reference Engine ]
-             └──► [ Stage 6: Multi-Schema PIM Exporter (Akeneo / Pimcore) ]
+* **Deployed Application:** [https://specforge.up.railway.app/](https://specforge.up.railway.app/) *(Hosted on Railway)*
+* **Interactive API Documentation (Swagger UI):** [https://backend-production-3449.up.railway.app/docs](https://www.google.com/url?sa=E&source=gmail&q=https://backend-production-3449.up.railway.app/docs)
+* **3-Minute Video Demo:** [Watch on Google Drive](https://drive.google.com/file/d/1Eh3I0zl6ffqAmQZfE_4mHoCJ5djtjPpY/view?usp=drivesdk)
 
-🛠️ Technology Stack
-| Component / Layer | Technologies Used | Purpose |
-|---|---|---|
-| Frontend Framework | Next.js 14 (App Router), React, TypeScript | Client dashboard shell & UI state management |
-| Styling & UI Shell | Tailwind CSS, shadcn/ui, Lucide Icons | Responsive dark-mode interface system |
-| 3D CAD & Graphics | @react-three/fiber, @react-three/drei, Three.js | Procedural 3D WebGL rendering & custom shaders |
-| Backend API Core | FastAPI, Python 3.11+, uv package manager | High-performance asynchronous REST endpoints |
-| Agent Orchestration | LangGraph, Pydantic v2 | Stateful multi-agent loops & strict data contracts |
-| Document OCR & Parsing | Docling, PDFium | Layout-aware table extraction & spatial bounding boxes |
-| LLM Inference | Groq API (Llama 3 70B) | High-speed semantic text and attribute proposal |
-| Physics & Math Engine | Pint (Python), Regex Rules | Deterministic unit conversion & material limit gates |
-| Database & Vector Index | PostgreSQL, Qdrant, SQLite (Local Dev) | Relational evidence store & SKU vector matching |
-📁 Project Structure
-specforge/
-├── apps/
-│   ├── web/                         # Next.js Frontend Application
-│   │   ├── src/
-│   │   │   ├── components/
-│   │   │   │   ├── UploadZone.tsx           # Drag-and-drop document intake
-│   │   │   │   ├── Parametric3DViewer.tsx   # React Three Fiber WebGL viewport
-│   │   │   │   ├── StressOverlayMesh.tsx    # Failure shader & vertex displacement
-│   │   │   │   ├── StressAnalysisPanel.tsx  # Interactive PSI / Temp sliders
-│   │   │   │   ├── ValidationAlerts.tsx     # Physics anomaly warning banner
-│   │   │   │   ├── CrossRefDrawer.tsx       # Competitor parity slide-over
-│   │   │   │   └── PimExportModal.tsx       # Akeneo / Pimcore JSON exporter
-│   │   │   ├── utils/
-│   │   │   │   ├── cadMapper.ts             # Maps JSON specs to 3D dimensions
-│   │   │   │   └── stressSimulator.ts       # Material yield & stress ratio logic
-│   │   │   └── types/
-│   │   │       ├── cad.ts                   # CAD parameters & material definitions
-│   │   │       └── alerts.ts                # Physics anomaly interface schemas
-│   └── api/                         # FastAPI Backend Core
-│       ├── routers/
-│       │   ├── ingest.py            # PDF upload & Docling spatial parser
-│       │   ├── physics.py           # Deterministic 8-Gate validation engine
-│       │   ├── crossref.py          # Qdrant SKU similarity match
-│       │   └── export.py            # PIM schema adapter endpoints
-│       ├── agents/
-│       │   └── graph.py             # LangGraph stateful agent workflow
-│       └── main.py                  # FastAPI application entrypoint
-├── docker-compose.yml               # Local Postgres & Qdrant setup
-└── README.md
+---
 
-🚀 Getting Started
-Prerequisites
- * Node.js: v18.x or higher
- * Python: v3.11 or higher
- * Package Managers: pnpm / npm and uv (Fast Python package manager)
- * API Keys: Groq API Key (for Llama-3 inference)
-Step 1: Environment Configuration
-Create a .env file in the root directory:
-# AI & LLM Inference
-GROQ_API_KEY=your_groq_api_key_here
+## ⚡ Brief Feature Overview
 
-# Database Configurations
-DATABASE_URL=postgresql://specforge:specforge@localhost:5432/specforge_db
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
+* **2D Spatial Evidence Bounding Canvas:** Automatically parses multi-page legacy PDFs and binds every extracted key-value attribute directly to an exact spatial coordinate box `[page, x1, y1, x2, y2]` on the source document canvas for 1-click human verification.
+* **Deterministic 8-Gate Physics Validation:** Intercepts LLM extraction candidates and routes them through a deterministic Python unit engine (`Pint`) and thermodynamic rule matrix to catch impossible physical parameters (e.g., PVC rated for 450°F) before database insertion.
+* **Parametric WebGL 3D CAD Viewport:** Procedurally builds interactive 360° 3D geometry (`@react-three/fiber`) directly from tabular dimension parameters without requiring pre-loaded CAD files.
+* **Real-Time Physics Failure & Stress Simulator:** Runs custom WebGL fragment shaders to visualize real-time thermal degradation and structural wireframe deformation when operating conditions exceed material yield thresholds.
+* **Competitor Cross-Referencing Engine:** Vectorizes normalized specifications and queries a Qdrant index using cosine similarity to generate 0–100% spec-parity equivalence scores across alternative vendor SKUs.
+* **Multi-Schema PIM Exporter:** Transforms verified attributes into production-ready Akeneo, Pimcore, or InRiver enterprise JSON schemas embedded with spatial provenance metadata.
 
-# App Ports
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+---
 
-Step 2: Backend Setup (FastAPI)
-# Navigate to API directory
-cd apps/api
+## 💡 The Core Problem & Architectural Paradigm
+
+In B2B industrial commerce, legacy datasheets are noisy, multi-column, and non-standardized. Traditional AI parsers fail because they **hallucinate context**: an LLM might misread a table cell or invent a 500 PSI pressure rating that was never in the document. In consumer software, an AI hallucination is an inconvenience; in industrial engineering, a single wrong number leads to structural failure, equipment loss, and safety hazards.
+
+**SpecForge enforces a Zero-Trust Hybrid Paradigm:**
+
+* **LLMs handle language semantics and contextual extraction proposal.**
+* **Deterministic code owns unit conversions, dimensional analysis, and physics validation.**
+
+The LLM is strictly forbidden from altering numbers, performing arithmetic, or declaring a specification physically valid. Code has the final say.
+
+---
+
+## 🛠️ Complete Technology Stack
+
+| Layer | Technologies & Frameworks | Role / Functionality |
+| --- | --- | --- |
+| **Frontend UI Shell** | Next.js (App Router), React 18, TypeScript, Tailwind CSS, shadcn/ui | Reactive split-pane dashboard, state synchronization, and glassmorphic UI components. |
+| **3D & Graphics Engine** | Three.js, `@react-three/fiber`, `@react-three/drei`, WebGL Shaders | Procedural CAD geometry generation, orbit controls, contact shadows, and vertex displacement shaders. |
+| **Backend Service Layer** | FastAPI (Python), `uv` package runtime, AsyncIO background queues | High-throughput REST contracts, streaming parsing jobs, and non-blocking job dispatch. |
+| **Document Parsing & OCR** | Docling, PDFium (fallback indexer), Vision LLMs | Layout-aware table extraction, spatial coordinate tokenization, and multi-column document parsing. |
+| **Agent Orchestration** | LangGraph, Pydantic v2 | Stateful multi-agent workflow execution, agent-to-agent state transitions, and human-in-the-loop escalation queues. |
+| **LLM Inference Core** | Groq API (Llama 3 models) | Sub-second token inference for structured JSON extraction and semantic tool routing. |
+| **Physics & Math Engine** | `Pint` (Python Unit Engine), Regex Engine, Constraint Matrices | Deterministic unit conversion (Imperial/Metric), dimensional analysis, and material safety boundary validation. |
+| **Storage & Vector Index** | PostgreSQL, Qdrant Vector Database, SQLite (Local Dev) | PostgreSQL serves as the authoritative truth for job/product states; Qdrant handles SKU embedding similarity search. |
+| **Deployment Infrastructure** | Railway App Platform | Automated CI/CD deployment for both Next.js frontend and FastAPI backend containers. |
+
+---
+
+## 🔬 Architectural Deep-Dive
+
+### 1. Spatial Evidence Provenance (`Docling` + `PDFium`)
+
+When a document is uploaded, Docling parses structural elements (tables, headers, text blocks) and returns token bounding boxes. If a document is scanned or degraded, PDFium acts as a fallback rendering layer. When a user clicks an extracted specification key in the UI, the canvas auto-scrolls to the exact page and lights up the bounding coordinates `[x1, y1, x2, y2]`.
+
+### 2. Zero-Trust Physics Gate (`Pint` + Rule Engine)
+
+Candidate parameters pass into an 8-gate validation pipeline:
+
+1. **Syntax Validation:** Regex checks for numerical formats and range structures.
+2. **Unit Standardisation:** `Pint` parses unit strings (e.g., `120 bar`, `1740 PSI`, `1.2 MPa`) and normalizes them into base SI units (`Pascals`).
+3. **Material Limit Evaluation:** Compares normalized operating conditions against the `MaterialLimits` lookup table (e.g., PVC max temperature = 140°F, Stainless Steel = 1500°F).
+4. **Boundary Interception:** If a parameter violates safety thresholds, the engine flags a `CRITICAL` anomaly. The raw text remains untouched for auditing, but the record is blocked from auto-publishing.
+
+### 3. Procedural 3D WebGL Mesh & Stress Shader Overlay
+
+Extracted geometric attributes (Outer Diameter, Inner Diameter, Flange Size, Length) are passed to `cadMapper.ts`. Rather than serving static `.gltf` files, `@react-three/fiber` procedurally instantiates Three.js geometry primitives. When entering **Physics Stress Mode**, custom WebGL fragment and vertex shaders calculate the stress load ratio (`Stress Index = Operating Load / Material Threshold`):
+
+* `Stress Index < 0.7`: Emerald green surface.
+* `0.7 <= Stress Index < 1.0`: Amber thermal heat-map gradient.
+* `Stress Index >= 1.0`: Pulsing red wireframe shader overlay with real-time vertex displacement vibration to visually demonstrate structural rupture.
+
+### 4. Vector Cross-Referencing (`Qdrant`)
+
+Target specification key-value pairs are converted into normalized spec vectors. These vectors are queried against a Qdrant index using cosine similarity to identify equivalent competitor parts (e.g., Parker vs. Swagelok vs. Norgren) and produce a 0–100% attribute parity matrix.
+
+---
+
+## 🌐 API Gateway Endpoints (FastAPI)
+
+Below are the primary REST contracts served by the backend API at `[https://backend-production-3449.up.railway.app/docs](https://backend-production-3449.up.railway.app/docs)`:
+
+```text
+POST /api/v1/ingest/parse
+├── Accepts: multipart/form-data (PDF File)
+└── Returns: Job ID, Structured Specs JSON, Spatial Bounding Box Coordinates
+
+POST /api/v1/physics/validate
+├── Accepts: Extracted Spec Key-Value Dictionary
+└── Returns: Anomaly Alerts Array (Severity, Violation Rule, Target Spec)
+
+GET  /api/v1/parts/{id}/cad-specs
+├── Accepts: Part ID Parameter
+└── Returns: Normalized CAD Parameters (OD, ID, Flange, Length, Material)
+
+POST /api/v1/cross-ref/match
+├── Accepts: Target Part Number / Spec Vector
+└── Returns: Competitor Matches Array (Parity Score, Spec Comparison Matrix)
+
+GET  /api/v1/export/pim
+├── Accepts: Part ID, Target Schema Format (akeneo | pimcore | inriver | standard)
+└── Returns: Transformed PIM JSON Payload with Origin Provenance Metadata
+
+```
+
+---
+
+## 🏃 Local Setup & Development
+
+### Prerequisites
+
+* **Node.js** >= 18.x
+* **Python** >= 3.11
+* **`uv`** (Python package installer) or `pip`
+
+### 1. Backend Setup
+
+```bash
+# Clone repository
+git clone https://github.com/your-org/specforge.git
+cd specforge/backend
 
 # Install dependencies using uv
 uv sync
 
-# Run database migrations
-uv run alembic upgrade head
+# Set environment variables
+cp .env.example .env
+# Configure GROQ_API_KEY, DATABASE_URL, QDRANT_URL
 
-# Start FastAPI development server
-uv run uvicorn main:app --reload --port 8000
+# Run FastAPI development server
+uvicorn main:app --reload --port 8000
 
-The API documentation will be available at http://localhost:8000/docs.
-Step 3: Frontend Setup (Next.js)
-# Navigate to web application directory
-cd apps/web
+```
+
+### 2. Frontend Setup
+
+```bash
+cd ../frontend
 
 # Install dependencies
-pnpm install
+npm install
 
-# Start Next.js development server
-pnpm dev
+# Set environment variables
+echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000" > .env.local
 
-Open http://localhost:3000 in your browser to launch the SpecForge Workbench.
-🔌 Core API Reference
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | /api/v1/ingest/parse | Accepts raw PDF upload; returns extracted key-value specs with spatial bounding boxes. |
-| POST | /api/v1/physics/validate | Runs 8-gate material limit check against extracted specs; returns violation array. |
-| GET | /api/v1/parts/{id}/cad-specs | Returns normalized geometric CAD parameters (OD, ID, Length, Port). |
-| POST | /api/v1/cross-ref/match | Queries Qdrant vector store for equivalent competitor SKUs and parity scores. |
-| GET | /api/v1/export/pim | Generates schema-transformed PIM JSON (Akeneo, Pimcore, InRiver) with provenance logs. |
-📄 License
-Distributed under the MIT License. See LICENSE for more information.
+# Run Next.js development server
+npm run dev
+
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.

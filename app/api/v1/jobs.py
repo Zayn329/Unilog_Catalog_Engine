@@ -244,14 +244,20 @@ async def upload_job(
     saved_filename = f"{job_id}_{filename}"
     saved_path = UPLOAD_DIR / saved_filename
 
-    content = await file.read()
-    if not content:
+    total_bytes = 0
+    with saved_path.open("wb") as buffer:
+        while chunk := await file.read(1024 * 1024):
+            total_bytes += len(chunk)
+            buffer.write(chunk)
+
+    if total_bytes == 0:
+        if saved_path.exists():
+            saved_path.unlink()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Uploaded file is empty.",
         )
 
-    saved_path.write_bytes(content)
 
     initial_state = {
         "job_id": str(job_id),

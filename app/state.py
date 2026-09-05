@@ -27,4 +27,4 @@ class GraphState(TypedDict):
     retry_count: NotRequired[int]
     has_critical_failures: NotRequired[bool]
     has_been_enriched: NotRequired[bool]
-    product: NotRequired[Product | None]
+    product: NotRequired[Product | None]

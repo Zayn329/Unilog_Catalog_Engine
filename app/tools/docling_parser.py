@@ -34,25 +34,38 @@ class DoclingParser:
     """Docling adapter that exposes markdown and percentage-based provenance."""
 
     def __init__(self) -> None:
-        from docling.datamodel.base_models import InputFormat
-        from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.document_converter import DocumentConverter, PdfFormatOption
+        self._converter = None
 
-        pipeline_options = PdfPipelineOptions(
-            do_ocr=False,
-            do_table_structure=False,
-            force_backend_text=True,
-        )
-        self._converter = DocumentConverter(
-            allowed_formats=[InputFormat.PDF],
-            format_options={
-                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-            },
-        )
+    def _get_converter(self):
+        if self._converter is None:
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+
+            pipeline_options = PdfPipelineOptions(
+                do_ocr=False,
+                do_table_structure=False,
+                force_backend_text=True,
+            )
+            self._converter = DocumentConverter(
+                allowed_formats=[InputFormat.PDF],
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                },
+            )
+        return self._converter
 
     def parse(self, file_path: str | Path) -> ParserOutput:
+        import os
+
+        if os.getenv("ENABLE_DOCLING", "false").lower() not in ("true", "1", "yes"):
+            return self._parse_with_pdfium(
+                file_path, "Docling inference disabled (lightweight pypdfium2 active)"
+            )
+
         try:
-            conversion = self._converter.convert(Path(file_path))
+            converter = self._get_converter()
+            conversion = converter.convert(Path(file_path))
             if conversion.has_errors():
                 return self._parse_with_pdfium(file_path, str(conversion.errors))
 
@@ -65,6 +78,8 @@ class DoclingParser:
             )
         except Exception as exc:
             return self._parse_with_pdfium(file_path, str(exc))
+
+
 
     @staticmethod
     def _parse_with_pdfium(file_path: str | Path, parser_error: str) -> ParserOutput:

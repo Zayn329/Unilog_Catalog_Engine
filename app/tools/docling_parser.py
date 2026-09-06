@@ -83,12 +83,16 @@ class DoclingParser:
 
     @staticmethod
     def _parse_with_pdfium(file_path: str | Path, parser_error: str) -> ParserOutput:
-        """Use Docling's PDF coordinate conventions when its model pipeline is unavailable."""
+        """Use pypdfium2 (and Groq Vision fallback for scanned pages) when Docling is unavailable."""
+        import os
+
         try:
             import pypdfium2 as pdfium
 
             pdf = pdfium.PdfDocument(str(file_path))
             page_layout_map: list[PageLayout] = []
+            groq_api_key = os.getenv("GROQ_API_KEY")
+
             for page_index in range(len(pdf)):
                 page = pdf[page_index]
                 width, height = page.get_size()
@@ -113,6 +117,25 @@ class DoclingParser:
                             )
                         )
                     )
+
+                # If no text was found via digital stream and Groq API key is present, perform Groq Vision OCR
+                if not text_parts and groq_api_key:
+                    vision_text = DoclingParser._ocr_page_with_groq_vision(page, page_index + 1, groq_api_key)
+                    if vision_text:
+                        text_parts.append(vision_text)
+                        boxes.append(
+                            LayoutBox(
+                                text=vision_text,
+                                coordinates=(
+                                    page_index + 1,
+                                    0.0,
+                                    0.0,
+                                    100.0,
+                                    100.0,
+                                )
+                            )
+                        )
+
                 page_layout_map.append(
                     PageLayout(
                         page_number=page_index + 1,
@@ -139,6 +162,64 @@ class DoclingParser:
                 terminal_status="FAILED_PARSING",
                 error_message=f"Docling: {parser_error}; PDF fallback: {fallback_error}",
             )
+
+    @staticmethod
+    def _ocr_page_with_groq_vision(page, page_number: int, api_key: str) -> str:
+        """Render PDF page image and query Groq Llama 3.2 Vision for OCR text extraction."""
+        import base64
+        import io
+        import requests
+
+        try:
+            # Render page bitmap and export to JPEG bytes using PIL or pypdfium2's image export
+            try:
+                from PIL import Image
+                bitmap = page.render(scale=2)
+                image = Image.fromarray(bitmap.to_numpy())
+                buffered = io.BytesIO()
+                image.save(buffered, format="JPEG")
+                img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            except Exception:
+                # Fallback: export raw PNG/PPM or bitmap directly if PIL is unavailable
+                bitmap = page.render(scale=2)
+                buffered = io.BytesIO()
+                bitmap.to_pil().save(buffered, format="JPEG")
+                img_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": "llama-3.2-11b-vision-preview",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Extract all text and tabular contents from this datasheet image accurately without summarizing.",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{img_b64}"
+                                },
+                            },
+                        ],
+                    }
+                ],
+                "temperature": 0.1,
+                "max_completion_tokens": 2048,
+            }
+            resp = requests.post(url, headers=headers, json=payload, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+            return ""
+        except Exception:
+            return ""
 
     @staticmethod
     def _page_layouts(conversion: object) -> list[PageLayout]:
